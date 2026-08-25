@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>inferoute docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23161a24'/%3E%3Cline x1='3' y1='6' x2='11' y2='12' stroke='%232f6fed' stroke-width='2'/%3E%3Cline x1='3' y1='12' x2='11' y2='12' stroke='%232f6fed' stroke-width='2'/%3E%3Cline x1='3' y1='18' x2='11' y2='12' stroke='%232f6fed' stroke-width='2'/%3E%3Cline x1='11' y1='12' x2='21' y2='12' stroke='%232f6fed' stroke-width='2'/%3E%3Ccircle cx='3' cy='6' r='2' fill='%232f6fed'/%3E%3Ccircle cx='3' cy='12' r='2' fill='%232f6fed'/%3E%3Ccircle cx='3' cy='18' r='2' fill='%232f6fed'/%3E%3Ccircle cx='21' cy='12' r='2.6' fill='%232f6fed'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#fbfaf8; --bg-raised:#ffffff; --text:#20211f; --text-dim:#5c5d59;
+    --border:#e6e4de; --accent:#2f6fed; --accent-dim:#e5edfe;
+    --code-bg:#161a24; --code-text:#e7eaf2; --code-key:#7fa8ff;
+    --pill-bg:#e5edfe; --pill-text:#1b4fc2;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12131a; --bg-raised:#191b24; --text:#eeecf3; --text-dim:#a09fab;
+      --border:#2b2d38; --accent:#6f9bff; --accent-dim:#1c2740;
+      --code-bg:#0e0f16; --code-text:#e7eaf2; --code-key:#7fa8ff;
+      --pill-bg:#1c2740; --pill-text:#9db8ff;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  a{color:var(--accent)}
+  code, pre{font:13.5px/1.55 "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
+  code{background:var(--accent-dim); padding:.15em .4em; border-radius:4px}
+  pre{background:var(--code-bg); color:var(--code-text); padding:14px 16px; border-radius:8px; overflow-x:auto}
+  pre code{background:none; padding:0; color:inherit}
+  .kw{color:var(--code-key)}
+
+  .layout{display:flex; max-width:1180px; margin:0 auto}
+  .sidebar{
+    width:230px; flex:0 0 230px; position:sticky; top:0; align-self:flex-start;
+    height:100vh; overflow-y:auto; padding:32px 18px 32px 24px; border-right:1px solid var(--border);
+  }
+  .sidebar .brand{display:flex; align-items:center; gap:8px; font-weight:700; font-size:17px; margin-bottom:2px}
+  .sidebar .brand svg{flex:0 0 auto}
+  .sidebar .tag{color:var(--text-dim); font-size:13px; margin-bottom:24px}
+  .sidebar nav a{
+    display:block; padding:6px 10px; margin:1px 0; border-radius:6px;
+    color:var(--text-dim); text-decoration:none; font-size:14px;
+  }
+  .sidebar nav a:hover{background:var(--accent-dim); color:var(--text)}
+  .sidebar nav a.active{background:var(--accent-dim); color:var(--accent); font-weight:600}
+  .sidebar .ext{margin-top:20px; padding-top:16px; border-top:1px solid var(--border); font-size:13px}
+
+  main{flex:1; min-width:0; padding:48px 56px 120px}
+  .hero h1{font-size:34px; margin:0 0 8px}
+  .hero p.lede{font-size:17px; color:var(--text-dim); max-width:640px}
+
+  .hero-terminal{
+    margin-top:28px; max-width:640px; border-radius:10px; overflow:hidden;
+    border:1px solid var(--border); background:var(--code-bg);
+    box-shadow:0 24px 60px -24px rgba(0,0,0,.4);
+  }
+  .hero-terminal-bar{
+    display:flex; align-items:center; gap:7px; padding:10px 14px;
+    background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .hero-terminal-bar .dot{width:11px; height:11px; border-radius:50%; flex:0 0 auto}
+  .hero-terminal-bar .dot-red{background:#ff5f57}
+  .hero-terminal-bar .dot-yellow{background:#febc2e}
+  .hero-terminal-bar .dot-green{background:#28c840}
+  .hero-terminal-bar .hero-terminal-title{
+    margin-left:6px; color:var(--code-text); opacity:.55; font-size:12px;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  .hero-terminal-body{
+    margin:0; padding:16px 18px 20px; background:none; color:var(--code-text);
+    min-height:230px; white-space:pre-wrap; font-size:13px; line-height:1.65;
+  }
+  .hero-terminal-body .prompt{color:var(--accent)}
+  .hero-terminal-body .ok{color:#4fd67a}
+  .hero-terminal-body .dim{opacity:.55}
+  .hero-terminal-cursor{
+    display:inline-block; width:7px; height:14px; margin-left:1px;
+    background:var(--code-text); vertical-align:text-bottom;
+    animation:hero-blink 1s step-end infinite;
+  }
+  @keyframes hero-blink{50%{opacity:0}}
+  @media (prefers-reduced-motion: reduce){ .hero-terminal-cursor{animation:none} }
+  section{margin-top:56px; scroll-margin-top:24px}
+  section h2{font-size:23px; border-bottom:1px solid var(--border); padding-bottom:10px}
+  section h3{font-size:17px; margin-top:32px}
+  section h3 code{font-size:15px}
+  p{max-width:720px}
+  .row{display:flex; gap:20px; flex-wrap:wrap}
+  .col{flex:1 1 320px; min-width:0}
+  .callout{
+    background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent);
+    border-radius:6px; padding:12px 16px; max-width:720px; font-size:14.5px; color:var(--text-dim);
+  }
+  .callout b{color:var(--text)}
+  table{border-collapse:collapse; width:100%; max-width:820px; font-size:13.5px; margin:14px 0}
+  th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top}
+  th{color:var(--text-dim); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em}
+  .pill{display:inline-block; background:var(--pill-bg); color:var(--pill-text); font-size:11.5px; font-weight:700;
+        padding:2px 8px; border-radius:999px; letter-spacing:.02em; margin-left:6px; vertical-align:middle}
+  .label{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim); margin:18px 0 6px}
+  footer{max-width:720px; margin-top:64px; padding-top:20px; border-top:1px solid var(--border); color:var(--text-dim); font-size:14px}
+
+  pre{position:relative}
+  .copybtn{
+    position:absolute; top:8px; right:8px; font:11px/1 -apple-system,sans-serif;
+    color:var(--code-text); background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+    border-radius:5px; padding:5px 8px; cursor:pointer; opacity:0; transition:opacity .12s;
+  }
+  pre:hover .copybtn, .copybtn:focus-visible{opacity:1}
+  .copybtn.copied{opacity:1; color:var(--accent); border-color:var(--accent)}
+
+  .navtoggle{display:none}
+  @media (max-width:860px){
+    .layout{display:block}
+    .sidebar{position:relative; height:auto; width:auto; border-right:none; border-bottom:1px solid var(--border)}
+    main{padding:32px 20px 80px}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <line x1="3" y1="6" x2="11" y2="12" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="3" y1="12" x2="11" y2="12" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="3" y1="18" x2="11" y2="12" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="11" y1="12" x2="21" y2="12" stroke="var(--accent)" stroke-width="2"/>
+        <circle cx="3" cy="6" r="2" fill="var(--accent)"/>
+        <circle cx="3" cy="12" r="2" fill="var(--accent)"/>
+        <circle cx="3" cy="18" r="2" fill="var(--accent)"/>
+        <circle cx="21" cy="12" r="2.6" fill="var(--accent)"/>
+      </svg>
+      inferoute
+    </div>
+    <div class="tag">Gateway docs</div>
+    <nav id="nav">
+      <a href="#overview">Overview</a>
+      <a href="#install">Install</a>
+      <a href="#quickstart">Run it locally</a>
+      <a href="#cli">CLI</a>
+      <a href="#configuration">Configuration</a>
+      <a href="#endpoints">Endpoints</a>
+      <a href="#cache-notes">Semantic cache notes</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="#deploy">Deploying it</a>
+      <a href="#limitations">Known limitations</a>
+    </nav>
+    <div class="ext">
+      <a href="https://github.com/Rakshit-gen/inferoute" target="_blank" rel="noopener">GitHub repo →</a>
+    </div>
+  </aside>
+
+  <main>
+    <div class="hero" id="overview">
+      <h1>inferoute</h1>
+      <p class="lede">
+        An OpenAI-compatible inference gateway written in Go. Point your
+        client at inferoute the same way you'd point it at OpenAI, and it
+        round-robins requests across whichever LLM backends you give it
+        (several Ollama or vLLM instances, or a hosted provider like Groq),
+        fails over on error, streams responses through unbuffered, and
+        optionally caches repeat requests so they never hit a backend twice.
+      </p>
+
+      <div class="hero-terminal">
+        <div class="hero-terminal-bar">
+          <span class="dot dot-red"></span><span class="dot dot-yellow"></span><span class="dot dot-green"></span>
+          <span class="hero-terminal-title">inferouted</span>
+        </div>
+        <pre class="hero-terminal-body"><code id="heroTermCode"></code><span class="hero-terminal-cursor"></span></pre>
+      </div>
+    </div>
+
+    <section>
+      <p>
+        The inference <i>engines</i> (vLLM, SGLang, llama.cpp, Ollama) are a
+        solved, crowded problem. The layer that routes to them — load
+        balancing, failover, caching, observability — isn't, and it's
+        infrastructure glue, which is what Go is for. inferoute is that
+        layer: a single static binary, one JSON config file, no database of
+        its own to run.
+      </p>
+      <div class="callout">
+        It's a <b>backend-only</b> tool on purpose: no bundled dashboard, no
+        multi-tenant auth. Point Prometheus at <code>/metrics</code> if you
+        want graphs. This keeps it small enough to actually read end to end.
+      </div>
+    </section>
+
+    <section id="install">
+      <h2>Install</h2>
+      <p>One command — needs the Go toolchain, nothing else:</p>
+      <pre><code>$ curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh</code></pre>
+      <p style="font-size:14px;color:var(--text-dim); max-width:720px">
+        That resolves straight to the latest commit on <code>main</code> via
+        <code>go install .../cmd/inferouted@latest</code> — no stale
+        prebuilt-binary releases to maintain. Don't have Go? The script says
+        so and points at <a href="https://go.dev/dl/">go.dev/dl</a> instead
+        of failing silently. Prefer building from source instead:
+      </p>
+      <pre><code><span class="kw">git clone</span> https://github.com/Rakshit-gen/inferoute && <span class="kw">cd</span> inferoute
+<span class="kw">go build</span> -o bin/inferouted ./cmd/inferouted</code></pre>
+    </section>
+
+    <section id="quickstart">
+      <h2>Run it locally</h2>
+      <p>
+        inferoute needs at least one backend to route to. The fastest way to
+        see routing and failover actually happen is two local Ollama
+        instances serving the same model:
+      </p>
+      <pre><code><span class="kw">OLLAMA_HOST</span>=127.0.0.1:11434 ollama serve &amp;
+<span class="kw">OLLAMA_HOST</span>=127.0.0.1:11435 ollama serve &amp;
+ollama pull llama3</code></pre>
+
+      <p>
+        <code>config.example.json</code> in the repo already points at both
+        of those for <code>llama3</code>, so:
+      </p>
+      <pre><code>$ inferouted -config config.example.json
+inferouted: listening on :8081, routing to 2 backend(s)</code></pre>
+
+      <p>Send it a request — same shape as the OpenAI chat completions API:</p>
+      <pre><code>$ curl localhost:8081/v1/chat/completions \
+    -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}]}'
+{"model":"llama3","message":{"role":"assistant","content":"..."}, ...}</code></pre>
+
+      <p>
+        That response came from whichever of the two Ollama instances
+        inferoute picked — you didn't have to know or care which. Kill one
+        <code>ollama serve</code> process and send the request again: the
+        next one fails over to the survivor instead of erroring. Check what
+        inferoute currently thinks is healthy at any time:
+      </p>
+      <pre><code>$ curl localhost:8081/v1/backends
+[{"name":"ollama-1","url":"http://localhost:11434","healthy":true},
+ {"name":"ollama-2","url":"http://localhost:11435","healthy":false}]</code></pre>
+
+      <div class="callout">
+        No Ollama handy? Point a <code>backends</code> entry at any
+        OpenAI-compatible host instead — see <code>api_key</code> and
+        <code>path_prefix</code> under <a href="#configuration">Configuration</a>
+        for gatewaying a hosted provider like Groq without your callers
+        needing their own key.
+      </div>
+    </section>
+
+    <section id="cli">
+      <h2>CLI</h2>
+      <p>The binary is <code>inferouted</code>, and it has exactly one flag:</p>
+      <pre><code>$ inferouted -config path/to/config.json   <span class="dim"># defaults to ./config.json</span>
+$ inferouted -h                            <span class="dim"># prints usage and exits</span></code></pre>
+      <p>
+        No subcommands, no interactive mode — it's a daemon. Point it at a
+        config file, it starts listening, <code>Ctrl-C</code> (or
+        <code>SIGTERM</code>) shuts it down cleanly. A <code>SIGHUP</code>
+        reloads <code>backends</code> and <code>model_aliases</code> from
+        the same file without restarting or dropping in-flight requests:
+      </p>
+      <pre><code>$ kill -HUP $(pgrep inferouted)</code></pre>
+    </section>
+
+    <section id="configuration">
+      <h2>Configuration</h2>
+      <p>
+        Everything lives in one JSON file (<code>config.example.json</code>
+        is a working starting point). Every field has a sane default except
+        <code>backends</code>, which is required.
+      </p>
+      <table>
+        <tr><th>Field</th><th>What it does</th></tr>
+        <tr><td><code>listen_addr</code></td><td>Where inferoute itself listens, e.g. <code>:8081</code>.</td></tr>
+        <tr><td><code>health_check_path</code>, <code>health_check_interval</code></td><td>Path to <code>GET</code> on each backend to check it's alive, and how often.</td></tr>
+        <tr><td><code>backends[].name</code>, <code>.url</code>, <code>.models</code></td><td>Servers to route to. <code>models</code> is the list of model names that backend serves; two backends listing the same model get load-balanced between.</td></tr>
+        <tr><td><code>backends[].path_prefix</code></td><td>Prepended to the client's request path — for backends that mount their API under a path (Groq's OpenAI-compatible endpoint lives under <code>/openai</code>).</td></tr>
+        <tr><td><code>backends[].api_key</code></td><td>Sent as that backend's <code>Authorization: Bearer</code> header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know.</td></tr>
+        <tr><td><code>rate_limit.enabled</code>, <code>.requests_per_second</code>, <code>.burst</code></td><td>Per-API-key token bucket (<code>Authorization: Bearer &lt;key&gt;</code>, falling back to remote IP). Off by default.</td></tr>
+        <tr><td><code>rate_limit.redis_addr</code></td><td>Leave empty for a per-instance limiter. Set to share limit state across a fleet of inferoute instances via Redis.</td></tr>
+        <tr><td><code>cache.enabled</code>, <code>.nucladb_addr</code></td><td>Semantic response caching, backed by a running <a href="https://github.com/Rakshit-gen/NuclaDB">NuclaDB</a> instance. Off by default.</td></tr>
+        <tr><td><code>cache.embedding_backend_addr</code>, <code>.embedding_model</code></td><td>Ollama-compatible server and model used to embed prompts for cache lookups.</td></tr>
+        <tr><td><code>cache.max_distance</code></td><td>How close a cached prompt has to be to count as a hit — see <a href="#cache-notes">Semantic cache notes</a>, the naming is easy to get backwards.</td></tr>
+        <tr><td><code>cache.tenant_id</code></td><td>NuclaDB tenant inferoute's cache vectors are stored under.</td></tr>
+        <tr><td><code>model_aliases</code></td><td>Maps a requested model name to one your backends actually serve, e.g. <code>{"gpt-4": "llama3"}</code>.</td></tr>
+      </table>
+    </section>
+
+    <section id="endpoints">
+      <h2>Endpoints</h2>
+      <p>Everything inferoute itself serves, beyond the proxied <code>/v1/*</code> routes:</p>
+      <table>
+        <tr><th>Route</th><th>What it does</th></tr>
+        <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend — same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
+        <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, and current health.</td></tr>
+        <tr><td><code>GET /healthz</code></td><td>Liveness probe — always 200 once the process is up.</td></tr>
+        <tr><td><code>GET /metrics</code></td><td>Prometheus: request count by model/backend/status, latency histogram, cache hit/miss/error counts.</td></tr>
+        <tr><td><code>GET /docs</code></td><td>This page, served straight from the running binary.</td></tr>
+      </table>
+    </section>
+
+    <section id="cache-notes">
+      <h2>Semantic cache notes</h2>
+      <p>
+        Two things that will silently misbehave if you get them wrong,
+        found by actually running inferoute against a live NuclaDB instance
+        rather than trusting the API docs:
+      </p>
+      <div class="callout">
+        <b>Embedding dimension must match.</b> NuclaDB is started with a
+        fixed vector dimension for the whole database (<code>nucladbd
+        -dim</code>); point <code>cache.embedding_model</code> at a model
+        that produces vectors of that exact length, or inserts get rejected.
+      </div>
+      <div class="callout" style="margin-top:10px">
+        <b><code>max_distance</code>, not a similarity threshold.</b>
+        NuclaDB's cosine "score" is <code>1 - cosine_similarity</code> — a
+        <i>distance</i>, where <code>0</code> means identical and larger
+        means further apart. A smaller <code>max_distance</code> means a
+        stricter match — the opposite of what "similarity threshold" naming
+        suggests, which is exactly the bug the first version of this cache
+        had. Fixed by round-tripping identical and different prompts against
+        a live server and checking the actual scores returned.
+      </div>
+      <p style="margin-top:16px">
+        Streaming responses are cached too, not just JSON ones — a cached
+        SSE stream is replayed as the exact bytes originally captured,
+        confirmed via the <code>X-Inferoute-Cache: hit</code> response
+        header on a hit.
+      </p>
+    </section>
+
+    <section id="benchmarks">
+      <h2>Benchmarks</h2>
+      <p>
+        Measured against the real <code>inferouted</code> binary, not
+        estimated — one dev machine, load generator and gateway sharing the
+        same CPU cores, so treat the absolute numbers as directional. The
+        relative shape (small fixed overhead, huge cache win) is the real
+        finding.
+      </p>
+      <div class="label">Routing overhead — direct vs. through inferoute</div>
+      <table>
+        <tr><th></th><th>Requests/sec</th><th>Mean latency</th><th>p50</th><th>p99</th></tr>
+        <tr><td>Direct to backend</td><td>~11,400</td><td>1.8ms</td><td>0ms</td><td>1ms</td></tr>
+        <tr><td>Through inferoute</td><td>~3,450</td><td>5.8ms</td><td>1ms</td><td>31ms</td></tr>
+      </table>
+      <div class="label">Semantic cache — 20 trials each, 700ms simulated backend latency</div>
+      <table>
+        <tr><th></th><th>Mean latency</th></tr>
+        <tr><td>Cache miss (unique prompt, hits the backend)</td><td>705.7ms</td></tr>
+        <tr><td>Cache hit (repeated prompt, served from NuclaDB)</td><td>0.80ms</td></tr>
+      </table>
+      <p><b>~880x faster on a hit</b> — confirmed via the cache-hit response header on all 20 trials, not inferred from timing alone.</p>
+    </section>
+
+    <section id="deploy">
+      <h2>Deploying it</h2>
+      <p>Everything in the repo, not just the local path:</p>
+      <div class="row">
+        <div class="col">
+          <div class="label">Docker</div>
+          <pre><code>$ docker compose up --build</code></pre>
+          <p style="font-size:14px;color:var(--text-dim)">
+            Starts inferoute plus two Ollama containers
+            (<code>docker-compose.yml</code>, config in
+            <code>config.docker.json</code>).
+          </p>
+        </div>
+        <div class="col">
+          <div class="label">Render</div>
+          <p style="font-size:14px;color:var(--text-dim)">
+            Deploys straight from <code>Dockerfile</code> as a plain web
+            service — health check <code>/healthz</code>, real config via a
+            Secret File mounted at <code>/etc/secrets/config.json</code>.
+            Full steps in the repo README's "Deploy to Render" section.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="limitations">
+      <h2>Known limitations</h2>
+      <p>
+        Worth knowing rather than discovering the hard way: the semantic
+        cache has no TTL or eviction, so a long-running gateway's cache
+        tenant grows forever. Routing is round-robin only — no weighted or
+        least-latency selection. A backend that's flaky (failing some but
+        not all requests) is treated the same as fully healthy until a
+        health check happens to catch it; there's no circuit breaker. No
+        TLS termination — put it behind a reverse proxy for that today.
+      </p>
+    </section>
+
+    <footer>
+      Generated for the <a href="https://github.com/Rakshit-gen/inferoute">inferoute</a>
+      project. Every example on this page was actually run against a real
+      binary — see the tests in <code>internal/proxy</code>,
+      <code>internal/backend</code>, <code>internal/cache</code>, and
+      <code>internal/ratelimit</code> for the same behavior in reproducible
+      form.
+    </footer>
+  </main>
+</div>
+
+<script>
+  var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+  var sections = links
+    .map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); })
+    .filter(Boolean);
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      links.forEach(function(a){
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(function(s){ io.observe(s); });
+
+  // Copy-to-clipboard button on every code block.
+  document.querySelectorAll('pre').forEach(function(pre){
+    var btn = document.createElement('button');
+    btn.className = 'copybtn';
+    btn.type = 'button';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function(){
+      var text = pre.querySelector('code').innerText.replace(/^\$ /gm, '').trim();
+      navigator.clipboard.writeText(text).then(function(){
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1400);
+      });
+    });
+    pre.appendChild(btn);
+  });
+
+  // Hero terminal: types out a real captured inferouted transcript once it
+  // scrolls into view.
+  (function(){
+    var el = document.getElementById('heroTermCode');
+    if (!el) return;
+    var box = el.closest('.hero-terminal');
+    var lines = [
+      '$ curl -fsSL .../install.sh | sh && inferouted -config config.example.json',
+      'inferouted: listening on :8081, routing to 2 backend(s)',
+      '',
+      '$ curl localhost:8081/v1/chat/completions \\',
+      '    -d \'{"model":"llama3","messages":[{"role":"user","content":"hi"}]}\'',
+      '{"model":"llama3","message":{"role":"assistant","content":"..."}}',
+      '',
+      '$ curl localhost:8081/v1/backends',
+      '[{"name":"ollama-1","healthy":true},{"name":"ollama-2","healthy":true}]'
+    ];
+
+    function escapeHtml(s){
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function renderLine(line){
+      if (line.indexOf('$ ') === 0) return '<span class="prompt">$ </span>' + escapeHtml(line.slice(2));
+      if (line.indexOf('[{') === 0 || line.indexOf('{"model"') === 0) return '<span class="ok">' + escapeHtml(line) + '</span>';
+      return escapeHtml(line);
+    }
+
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      el.innerHTML = lines.map(renderLine).join('\n');
+      return;
+    }
+
+    var done = [];
+    var li = 0, ci = 0;
+    function tick(){
+      if (li >= lines.length) return;
+      var line = lines[li];
+      ci++;
+      el.innerHTML = done.join('\n') + (done.length ? '\n' : '') + escapeHtml(line.slice(0, ci));
+      if (ci >= line.length) {
+        done.push(renderLine(line));
+        li++; ci = 0;
+        setTimeout(tick, line.length === 0 ? 100 : 160);
+      } else {
+        setTimeout(tick, 8 + Math.random() * 18);
+      }
+    }
+
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        tick();
+      });
+    }, { threshold: 0.3 });
+    io.observe(box);
+  })();
+</script>
+</body>
+</html>

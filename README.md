@@ -59,7 +59,15 @@ OLLAMA_HOST=127.0.0.1:11435 ollama serve &
 ollama pull llama3
 ```
 
-Build and run inferoute against them:
+Install and run inferoute against them — one command if you have Go:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh
+curl -O https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/config.example.json
+inferouted -config config.example.json
+```
+
+Or build from source:
 
 ```sh
 go build -o bin/inferouted ./cmd/inferouted
@@ -83,8 +91,9 @@ which of the two instances handled it:
 
 Run it a few more times and kill one `ollama serve` process — the next
 request fails over to the survivor instead of erroring. `/metrics` serves
-Prometheus metrics, `/healthz` is a liveness probe, and `/v1/backends`
-reports each backend's name and current health:
+Prometheus metrics, `/healthz` is a liveness probe, `/v1/backends`
+reports each backend's name and current health, and `/docs` serves a full
+documentation page straight from the running binary:
 
 ```sh
 curl localhost:8081/v1/backends

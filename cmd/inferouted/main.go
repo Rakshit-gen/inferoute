@@ -17,6 +17,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	site "github.com/Rakshit-gen/inferoute/docs/site"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
@@ -90,6 +91,10 @@ func main() {
 	})
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(site.Index)
+	})
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: mux}
 	go func() {
