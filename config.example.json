@@ -1,0 +1,30 @@
+{
+  "listen_addr": ":8081",
+  "health_check_path": "/",
+  "health_check_interval": "10s",
+  "backends": [
+    {
+      "name": "ollama-1",
+      "url": "http://localhost:11434",
+      "models": ["llama3"]
+    },
+    {
+      "name": "ollama-2",
+      "url": "http://localhost:11435",
+      "models": ["llama3"]
+    }
+  ],
+  "rate_limit": {
+    "enabled": false,
+    "requests_per_second": 5,
+    "burst": 10
+  },
+  "cache": {
+    "enabled": false,
+    "nucladb_addr": "http://localhost:8080",
+    "embedding_backend_addr": "http://localhost:11434",
+    "embedding_model": "nomic-embed-text",
+    "max_distance": 0.05,
+    "tenant_id": "inferoute-cache"
+  }
+}
