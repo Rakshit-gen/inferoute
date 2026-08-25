@@ -14,5 +14,5 @@ services:
     build: .
     ports: ["8081:8081"]
     volumes:
-      - ./config.docker.json:/etc/inferoute/config.json:ro
+      - ./config.docker.json:/etc/secrets/config.json:ro
     depends_on: [ollama-1, ollama-2]

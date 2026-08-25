@@ -73,6 +73,29 @@ to `ollama pull llama3` before sending traffic. Semantic caching and
 Redis-backed rate limiting aren't included in the compose file — they need
 NuclaDB and/or Redis running alongside it, see below.
 
+### Deploy to Render
+
+inferoute is a stateless HTTP proxy, so it deploys as a plain Render web
+service built from `Dockerfile` — it doesn't need a database or persistent
+disk itself:
+
+1. **New > Web Service** on the [Render dashboard](https://dashboard.render.com),
+   connect this repo, and pick **Docker** as the runtime. Render detects
+   `Dockerfile` at the repo root automatically.
+2. Set the health check path to `/healthz`.
+3. Add your real `config.json` as a **Secret File** named `config.json`
+   (Environment tab). Render mounts it at `/etc/secrets/config.json`, which
+   is exactly what `Dockerfile`'s `CMD` points `-config` at by default — no
+   start-command override needed.
+4. Your backends (the Ollama/vLLM instances in that config) need to be
+   reachable from Render's network — a `localhost` URL only works if
+   inferoute and the backend are both running on your machine. Point it at
+   a publicly reachable inference server, or run backend and gateway in the
+   same private network.
+
+Free-tier services spin down after 15 minutes of inactivity and take
+30-60s to wake on the next request; the Starter plan keeps it always-on.
+
 ## CLI
 
 The binary is `inferouted`, and it has exactly one flag:
