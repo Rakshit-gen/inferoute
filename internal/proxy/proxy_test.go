@@ -179,8 +179,8 @@ func TestServeHTTPResolvesModelAlias(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
-	if gotModel != "gpt-4" {
-		t.Fatalf("expected the backend to still see the original model name %q in the body, got %q", "gpt-4", gotModel)
+	if gotModel != "llama3" {
+		t.Fatalf("expected the backend to see the resolved model name %q, got %q", "llama3", gotModel)
 	}
 }
 

@@ -74,6 +74,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	model := parsed.Model
 	if alias, ok := (*h.aliases.Load())[model]; ok {
 		model = alias
+		// The backend needs to see the resolved model name, not the alias
+		// the client asked for — rewrite just that field, preserving
+		// everything else in the body byte-for-byte.
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err == nil {
+			if resolved, err := json.Marshal(model); err == nil {
+				raw["model"] = resolved
+				if rewritten, err := json.Marshal(raw); err == nil {
+					body = rewritten
+				}
+			}
+		}
 	}
 	defer metrics.ObserveDuration(model, start)
 
