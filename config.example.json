@@ -17,7 +17,8 @@
   "rate_limit": {
     "enabled": false,
     "requests_per_second": 5,
-    "burst": 10
+    "burst": 10,
+    "redis_addr": ""
   },
   "cache": {
     "enabled": false,
@@ -26,5 +27,6 @@
     "embedding_model": "nomic-embed-text",
     "max_distance": 0.05,
     "tenant_id": "inferoute-cache"
-  }
+  },
+  "model_aliases": {}
 }

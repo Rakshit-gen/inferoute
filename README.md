@@ -7,8 +7,9 @@ An OpenAI-compatible inference gateway written in Go: it round-robins
 requests across multiple LLM backends serving the same model (e.g. several
 Ollama or vLLM instances), health-checks them, fails over to the next
 healthy one on error, streams SSE responses straight through unbuffered,
-rate-limits per API key, and semantically caches non-streaming responses
-using [NuclaDB](https://github.com/Rakshit-gen/NuclaDB).
+rate-limits per API key (in-process or shared across instances via Redis),
+and semantically caches responses — streaming included — using
+[NuclaDB](https://github.com/Rakshit-gen/NuclaDB).
 
 ## Why
 
@@ -52,7 +53,25 @@ which of the two instances handled it:
 
 Run it a few more times and kill one `ollama serve` process — the next
 request fails over to the survivor instead of erroring. `/metrics` serves
-Prometheus metrics, `/healthz` is a liveness probe.
+Prometheus metrics, `/healthz` is a liveness probe, and `/v1/backends`
+reports each backend's name and current health:
+
+```sh
+curl localhost:8081/v1/backends
+# [{"name":"ollama-1","url":"http://localhost:11434","healthy":true}, ...]
+```
+
+Or skip the local Go/Ollama install and run everything in containers:
+
+```sh
+docker compose up --build
+```
+
+That starts inferoute plus two Ollama containers (`docker-compose.yml`,
+config in `config.docker.json`); `docker exec` into either Ollama container
+to `ollama pull llama3` before sending traffic. Semantic caching and
+Redis-backed rate limiting aren't included in the compose file — they need
+NuclaDB and/or Redis running alongside it, see below.
 
 ## CLI
 
@@ -65,8 +84,16 @@ The binary is `inferouted`, and it has exactly one flag:
 
 There's no subcommand or interactive mode — it's a daemon: point it at a
 config file, it starts listening, `Ctrl-C` (or `SIGTERM`) shuts it down
-cleanly. Everything else is controlled through the config file below or by
-calling the HTTP API it serves.
+cleanly. A `SIGHUP` reloads the `backends` and `model_aliases` sections from
+the same config file without restarting (`rate_limit`/`cache` settings are
+not reloaded — those need a restart):
+
+```sh
+kill -HUP $(pgrep inferouted)
+```
+
+Everything else is controlled through the config file below or by calling
+the HTTP API it serves.
 
 ## Configuration
 
@@ -80,29 +107,41 @@ one). Plain-English rundown of each section:
 | `backends` | The list of servers to route to. Each entry is `{name, url, models}` — `models` is the list of model names that backend can serve; two backends listing the same model get load-balanced between. |
 | `rate_limit.enabled` | Turn per-API-key rate limiting on or off. Off by default. |
 | `rate_limit.requests_per_second`, `.burst` | Steady-state rate and how many requests can burst above it before a caller starts getting `429`s. |
+| `rate_limit.redis_addr` | Leave empty for a per-instance limiter (fine for one gateway). Set to a `host:port` to share limit state across a fleet of inferoute instances via Redis instead. |
 | `cache.enabled` | Turn semantic response caching on or off. Off by default, and requires a running [NuclaDB](https://github.com/Rakshit-gen/NuclaDB) instance. |
 | `cache.nucladb_addr` | Where that NuclaDB instance is. |
 | `cache.embedding_backend_addr`, `.embedding_model` | Which Ollama-compatible server and model to use to turn a prompt into a vector for cache lookups. |
 | `cache.max_distance` | How close a cached prompt has to be to count as a hit — see the note below, the naming here is easy to get backwards. |
 | `cache.tenant_id` | The NuclaDB tenant inferoute's cache vectors are stored under. |
+| `model_aliases` | Maps a requested model name to the one your backends actually serve, e.g. `{"gpt-4": "llama3"}` routes `gpt-4` requests to whatever backend lists `llama3`. Empty by default (no aliasing). |
 
 Every field has a sane default except `backends`, which is required.
 
 ## Features
 
-- **Routing + failover**: reads `model` from the request body, round-robins
-  across healthy backends registered for it, retries the next one on a
-  connection error or 5xx.
+- **Routing + failover**: reads `model` from the request body (resolved
+  through `model_aliases` first, if configured), round-robins across
+  healthy backends registered for it, retries the next one on a connection
+  error or 5xx.
 - **Streaming**: SSE responses are flushed to the client chunk-by-chunk as
   the backend produces them, not buffered.
+- **Model aliasing** (`model_aliases` in config): let callers request a
+  model name your backends don't actually use (e.g. `gpt-4`) and route it to
+  one they do.
 - **Rate limiting** (`rate_limit` in config): per-API-key token bucket
   (`Authorization: Bearer <key>`, falling back to remote IP). 429 over the
-  limit.
-- **Semantic caching** (`cache` in config): non-streaming chat requests are
-  embedded (via an Ollama-compatible `/api/embeddings` endpoint), looked up
-  in NuclaDB, and served from cache on a close match; misses are stored
-  after the backend responds. Streaming requests always bypass the cache —
-  caching a partial SSE stream isn't implemented.
+  limit. In-process by default; set `rate_limit.redis_addr` to share the
+  limit across multiple inferoute instances behind a load balancer instead.
+- **Semantic caching** (`cache` in config): chat requests — streaming
+  included — are embedded (via an Ollama-compatible `/api/embeddings`
+  endpoint), looked up in NuclaDB, and served from cache on a close match; a
+  cached streaming response is replayed as the exact bytes originally
+  captured. Misses are stored after the backend responds.
+- **Config hot-reload**: `SIGHUP` reloads `backends` and `model_aliases`
+  from the config file without dropping in-flight requests or restarting
+  the process.
+- **Introspection** (`/v1/backends`): JSON list of every backend's name,
+  URL, and current health.
 - **Metrics** (`/metrics`): request count by model/backend/status, request
   latency histogram by model, cache hit/miss/error counts. Point Prometheus
   or Grafana at it — no bundled dashboard; this is a backend-only tool.
@@ -131,13 +170,17 @@ the proto docs:
 
 Working end-to-end, verified against real binaries (not just unit tests):
 routing, round-robin, health-checked failover, streaming passthrough,
-per-key rate limiting, and NuclaDB-backed semantic caching with real
-cache-hit/cache-miss behavior confirmed by request counts on the backend.
+model aliasing, `SIGHUP` config reload, `/v1/backends` introspection,
+per-key rate limiting (both in-process and Redis-backed), and NuclaDB-backed
+semantic caching — including caching a streaming response and replaying it
+on a hit — with real cache-hit/cache-miss behavior confirmed against a live
+NuclaDB instance and real Redis, not fakes.
 
-Not yet built: batched/async cache writes at scale, caching for streaming
-responses, distributed rate limiting (current limiter state is
-process-local — fine for one gateway instance, not for a fleet behind a
-load balancer).
+Not yet built: batched/async cache writes at scale, cache eviction/TTL (a
+long-running gateway's cache tenant grows forever), weighted or
+least-latency routing (round-robin only), a circuit breaker for flaky (as
+opposed to fully down) backends, and TLS termination (put it behind a
+reverse proxy for that today).
 
 See tests in `internal/backend`, `internal/proxy`, `internal/cache`, and
 `internal/ratelimit` for the behavior that's actually verified.

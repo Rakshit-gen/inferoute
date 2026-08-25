@@ -8,7 +8,7 @@ import (
 
 func TestMiddlewareAllowsThenRejectsBurst(t *testing.T) {
 	l := New(1, 2) // 1 req/s refill, burst of 2
-	handler := l.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -35,7 +35,7 @@ func TestMiddlewareAllowsThenRejectsBurst(t *testing.T) {
 
 func TestMiddlewareIsolatesKeys(t *testing.T) {
 	l := New(1, 1)
-	handler := l.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

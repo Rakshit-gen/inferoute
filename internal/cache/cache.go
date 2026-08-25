@@ -1,6 +1,9 @@
 // Package cache implements semantic response caching backed by NuclaDB: it
 // embeds the request's prompt text, looks up the nearest cached vector, and
-// serves the stored response verbatim on a close-enough match.
+// serves the stored response verbatim on a close-enough match. Both
+// non-streaming and streaming (SSE) responses are cached; a streamed hit is
+// replayed as one write of the originally captured bytes rather than
+// re-created chunk by chunk.
 //
 // The embedding model's output dimensionality must match the dimension the
 // target NuclaDB instance was started with (nucladbd -dim); this package
@@ -69,12 +72,14 @@ func (c *Cache) EnsureTenant(ctx context.Context) error {
 	return nil
 }
 
-// Lookup embeds text and returns the cached response body for the nearest
-// match if its distance is within MaxDistance.
-func (c *Cache) Lookup(ctx context.Context, text string) ([]byte, bool, error) {
+// Lookup embeds text and returns the cached response body (and the content
+// type it was originally served with — text/event-stream for a streamed
+// response, application/json otherwise) for the nearest match if its
+// distance is within MaxDistance.
+func (c *Cache) Lookup(ctx context.Context, text string) (body []byte, contentType string, hit bool, err error) {
 	vec, err := c.embed(ctx, text)
 	if err != nil {
-		return nil, false, fmt.Errorf("embedding for cache lookup: %w", err)
+		return nil, "", false, fmt.Errorf("embedding for cache lookup: %w", err)
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
@@ -82,17 +87,17 @@ func (c *Cache) Lookup(ctx context.Context, text string) ([]byte, bool, error) {
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.NuclaDBAddr+"/v1/search", bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, false, err
+		return nil, "", false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, false, fmt.Errorf("searching cache: %w", err)
+		return nil, "", false, fmt.Errorf("searching cache: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, false, fmt.Errorf("searching cache: %s: %s", resp.Status, b)
+		return nil, "", false, fmt.Errorf("searching cache: %s: %s", resp.Status, b)
 	}
 
 	var result struct {
@@ -102,17 +107,22 @@ func (c *Cache) Lookup(ctx context.Context, text string) ([]byte, bool, error) {
 		} `json:"matches"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, false, fmt.Errorf("decoding cache search response: %w", err)
+		return nil, "", false, fmt.Errorf("decoding cache search response: %w", err)
 	}
 	if len(result.Matches) == 0 || result.Matches[0].Score > c.cfg.MaxDistance {
-		return nil, false, nil
+		return nil, "", false, nil
 	}
-	return []byte(result.Matches[0].Metadata["response"]), true, nil
+	ct := result.Matches[0].Metadata["content_type"]
+	if ct == "" {
+		ct = "application/json" // cache entries written before content_type existed
+	}
+	return []byte(result.Matches[0].Metadata["response"]), ct, true, nil
 }
 
-// Store embeds text and upserts it into NuclaDB with response attached as
-// metadata, keyed by a hash of text so identical prompts overwrite in place.
-func (c *Cache) Store(ctx context.Context, text string, response []byte) error {
+// Store embeds text and upserts it into NuclaDB with response and
+// contentType attached as metadata, keyed by a hash of text so identical
+// prompts overwrite in place.
+func (c *Cache) Store(ctx context.Context, text string, response []byte, contentType string) error {
 	vec, err := c.embed(ctx, text)
 	if err != nil {
 		return fmt.Errorf("embedding for cache store: %w", err)
@@ -122,7 +132,7 @@ func (c *Cache) Store(ctx context.Context, text string, response []byte) error {
 		"id":        idFor(text),
 		"values":    vec,
 		"tenant_id": c.cfg.TenantID,
-		"metadata":  map[string]string{"response": string(response), "prompt": text},
+		"metadata":  map[string]string{"response": string(response), "prompt": text, "content_type": contentType},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.NuclaDBAddr+"/v1/vectors", bytes.NewReader(reqBody))
 	if err != nil {

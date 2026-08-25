@@ -71,3 +71,23 @@ func TestNextErrorsForUnknownModel(t *testing.T) {
 		t.Fatal("expected error for unregistered model, got nil")
 	}
 }
+
+func TestSnapshotReportsHealth(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"llama3"}},
+		{Name: "b", URL: "http://b", Models: []string{"llama3"}},
+	})
+	p.all[0].healthy.Store(false)
+
+	snap := p.Snapshot()
+	if len(snap) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(snap))
+	}
+	got := map[string]bool{}
+	for _, s := range snap {
+		got[s.Name] = s.Healthy
+	}
+	if got["a"] != false || got["b"] != true {
+		t.Fatalf("unexpected snapshot: %+v", snap)
+	}
+}

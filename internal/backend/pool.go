@@ -77,6 +77,22 @@ func (p *Pool) Next(model string) (*Backend, error) {
 
 func (p *Pool) MarkUnhealthy(b *Backend) { b.healthy.Store(false) }
 
+// Status is a point-in-time snapshot of one backend, for introspection.
+type Status struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Healthy bool   `json:"healthy"`
+}
+
+// Snapshot returns the current health of every backend in the pool.
+func (p *Pool) Snapshot() []Status {
+	out := make([]Status, len(p.all))
+	for i, b := range p.all {
+		out[i] = Status{Name: b.Name, URL: b.URL.String(), Healthy: b.Healthy()}
+	}
+	return out
+}
+
 // StartHealthChecks polls every backend's health path on interval and
 // updates its healthy flag until ctx is canceled.
 func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time.Duration) {

@@ -19,6 +19,9 @@ type RateLimit struct {
 	Enabled           bool    `json:"enabled"`
 	RequestsPerSecond float64 `json:"requests_per_second"`
 	Burst             int     `json:"burst"`
+	// RedisAddr, if set, shares rate-limit state across gateway instances via
+	// Redis instead of the default in-process (single-instance) limiter.
+	RedisAddr string `json:"redis_addr"`
 }
 
 type Cache struct {
@@ -37,6 +40,10 @@ type Config struct {
 	Backends            []Backend     `json:"backends"`
 	RateLimit           RateLimit     `json:"rate_limit"`
 	Cache               Cache         `json:"cache"`
+	// ModelAliases maps a requested model name to the model name backends
+	// actually serve, e.g. {"gpt-4": "llama3"} routes gpt-4 requests to
+	// whatever backend lists "llama3".
+	ModelAliases map[string]string `json:"model_aliases"`
 }
 
 func Load(path string) (*Config, error) {
@@ -46,12 +53,13 @@ func Load(path string) (*Config, error) {
 	}
 
 	var raw struct {
-		ListenAddr          string    `json:"listen_addr"`
-		HealthCheckPath     string    `json:"health_check_path"`
-		HealthCheckInterval string    `json:"health_check_interval"`
-		Backends            []Backend `json:"backends"`
-		RateLimit           RateLimit `json:"rate_limit"`
-		Cache               Cache     `json:"cache"`
+		ListenAddr          string            `json:"listen_addr"`
+		HealthCheckPath     string            `json:"health_check_path"`
+		HealthCheckInterval string            `json:"health_check_interval"`
+		Backends            []Backend         `json:"backends"`
+		RateLimit           RateLimit         `json:"rate_limit"`
+		Cache               Cache             `json:"cache"`
+		ModelAliases        map[string]string `json:"model_aliases"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
@@ -63,6 +71,7 @@ func Load(path string) (*Config, error) {
 		Backends:        raw.Backends,
 		RateLimit:       raw.RateLimit,
 		Cache:           raw.Cache,
+		ModelAliases:    raw.ModelAliases,
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"

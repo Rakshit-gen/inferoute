@@ -14,7 +14,7 @@ import (
 type fakeNuclaDB struct {
 	stored map[string]struct {
 		values   []float32
-		response string
+		metadata map[string]string
 	}
 	nextScore float32 // score to return from the next /v1/search call
 }
@@ -22,7 +22,7 @@ type fakeNuclaDB struct {
 func newFakeNuclaDB() *fakeNuclaDB {
 	return &fakeNuclaDB{stored: map[string]struct {
 		values   []float32
-		response string
+		metadata map[string]string
 	}{}}
 }
 
@@ -38,8 +38,8 @@ func (f *fakeNuclaDB) handler() http.Handler {
 		json.NewDecoder(r.Body).Decode(&body)
 		f.stored[body.ID] = struct {
 			values   []float32
-			response string
-		}{body.Values, body.Metadata["response"]}
+			metadata map[string]string
+		}{body.Values, body.Metadata}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("POST /v1/search", func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,7 @@ func (f *fakeNuclaDB) handler() http.Handler {
 		json.NewEncoder(w).Encode(map[string]any{
 			"matches": []map[string]any{{
 				"score":    f.nextScore,
-				"metadata": map[string]string{"response": f.stored[last].response},
+				"metadata": f.stored[last].metadata,
 			}},
 		})
 	})
@@ -80,12 +80,12 @@ func TestStoreThenLookupHit(t *testing.T) {
 		EmbeddingModel: "test-embed", MaxDistance: 0.1, TenantID: "t1",
 	})
 
-	if err := c.Store(context.Background(), "what is go", []byte(`{"answer":"a language"}`)); err != nil {
+	if err := c.Store(context.Background(), "what is go", []byte(`{"answer":"a language"}`), "application/json"); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
 	db.nextScore = 0.01 // near-zero distance: essentially the same vector
-	got, hit, err := c.Lookup(context.Background(), "what is go")
+	got, ct, hit, err := c.Lookup(context.Background(), "what is go")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)
 	}
@@ -94,6 +94,42 @@ func TestStoreThenLookupHit(t *testing.T) {
 	}
 	if string(got) != `{"answer":"a language"}` {
 		t.Fatalf("unexpected cached body: %s", got)
+	}
+	if ct != "application/json" {
+		t.Fatalf("unexpected content type: %s", ct)
+	}
+}
+
+func TestStoreThenLookupHitStreaming(t *testing.T) {
+	db := newFakeNuclaDB()
+	dbSrv := httptest.NewServer(db.handler())
+	defer dbSrv.Close()
+	embed := fakeEmbedder(t)
+	defer embed.Close()
+
+	c := New(Config{
+		NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL,
+		EmbeddingModel: "test-embed", MaxDistance: 0.1, TenantID: "t1",
+	})
+
+	sse := "data: chunk-0\n\ndata: chunk-1\n\n"
+	if err := c.Store(context.Background(), "stream me", []byte(sse), "text/event-stream"); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	db.nextScore = 0.01
+	got, ct, hit, err := c.Lookup(context.Background(), "stream me")
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if !hit {
+		t.Fatal("expected cache hit within max distance")
+	}
+	if string(got) != sse {
+		t.Fatalf("unexpected cached body: %s", got)
+	}
+	if ct != "text/event-stream" {
+		t.Fatalf("unexpected content type: %s", ct)
 	}
 }
 
@@ -108,10 +144,10 @@ func TestLookupMissBeyondMaxDistance(t *testing.T) {
 		NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL,
 		EmbeddingModel: "test-embed", MaxDistance: 0.05, TenantID: "t1",
 	})
-	c.Store(context.Background(), "unrelated prompt", []byte(`{"a":1}`))
+	c.Store(context.Background(), "unrelated prompt", []byte(`{"a":1}`), "application/json")
 
 	db.nextScore = 1.2 // large distance: an unrelated vector
-	_, hit, err := c.Lookup(context.Background(), "something else entirely")
+	_, _, hit, err := c.Lookup(context.Background(), "something else entirely")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)
 	}

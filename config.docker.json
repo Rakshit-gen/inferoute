@@ -1,0 +1,11 @@
+{
+  "listen_addr": ":8081",
+  "health_check_path": "/",
+  "health_check_interval": "10s",
+  "backends": [
+    { "name": "ollama-1", "url": "http://ollama-1:11434", "models": ["llama3"] },
+    { "name": "ollama-2", "url": "http://ollama-2:11434", "models": ["llama3"] }
+  ],
+  "rate_limit": { "enabled": false, "requests_per_second": 5, "burst": 10 },
+  "cache": { "enabled": false }
+}
