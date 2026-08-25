@@ -206,7 +206,7 @@ Every field has a sane default except `backends`, which is required.
   URL, and current health.
 - **Metrics** (`/metrics`): request count by model/backend/status, request
   latency histogram by model, cache hit/miss/error counts. Point Prometheus
-  or Grafana at it — no bundled dashboard; this is a backend-only tool.
+  or Grafana at it.
 
 ## Benchmarks
 

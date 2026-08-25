@@ -148,7 +148,6 @@
       <a href="#cache-notes">Semantic cache notes</a>
       <a href="#benchmarks">Benchmarks</a>
       <a href="#deploy">Deploying it</a>
-      <a href="#limitations">Known limitations</a>
     </nav>
     <div class="ext">
       <a href="https://github.com/Rakshit-gen/inferoute" target="_blank" rel="noopener">GitHub repo →</a>
@@ -179,27 +178,22 @@
     <section>
       <p>
         The inference <i>engines</i> (vLLM, SGLang, llama.cpp, Ollama) are a
-        solved, crowded problem. The layer that routes to them — load
-        balancing, failover, caching, observability — isn't, and it's
+        solved, crowded problem. The layer that routes to them (load
+        balancing, failover, caching, observability) isn't, and it's
         infrastructure glue, which is what Go is for. inferoute is that
         layer: a single static binary, one JSON config file, no database of
         its own to run.
       </p>
-      <div class="callout">
-        It's a <b>backend-only</b> tool on purpose: no bundled dashboard, no
-        multi-tenant auth. Point Prometheus at <code>/metrics</code> if you
-        want graphs. This keeps it small enough to actually read end to end.
-      </div>
     </section>
 
     <section id="install">
       <h2>Install</h2>
-      <p>One command — needs the Go toolchain, nothing else:</p>
+      <p>One command (needs the Go toolchain, nothing else):</p>
       <pre><code>$ curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh</code></pre>
       <p style="font-size:14px;color:var(--text-dim); max-width:720px">
         That resolves straight to the latest commit on <code>main</code> via
-        <code>go install .../cmd/inferouted@latest</code> — no stale
-        prebuilt-binary releases to maintain. Don't have Go? The script says
+        <code>go install .../cmd/inferouted@latest</code>, so there are no
+        stale prebuilt-binary releases to maintain. Don't have Go? The script says
         so and points at <a href="https://go.dev/dl/">go.dev/dl</a> instead
         of failing silently. Prefer building from source instead:
       </p>
@@ -225,14 +219,14 @@ ollama pull llama3</code></pre>
       <pre><code>$ inferouted -config config.example.json
 inferouted: listening on :8081, routing to 2 backend(s)</code></pre>
 
-      <p>Send it a request — same shape as the OpenAI chat completions API:</p>
+      <p>Send it a request, in the same shape as the OpenAI chat completions API:</p>
       <pre><code>$ curl localhost:8081/v1/chat/completions \
     -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}]}'
 {"model":"llama3","message":{"role":"assistant","content":"..."}, ...}</code></pre>
 
       <p>
         That response came from whichever of the two Ollama instances
-        inferoute picked — you didn't have to know or care which. Kill one
+        inferoute picked, and you didn't have to know or care which. Kill one
         <code>ollama serve</code> process and send the request again: the
         next one fails over to the survivor instead of erroring. Check what
         inferoute currently thinks is healthy at any time:
@@ -243,7 +237,7 @@ inferouted: listening on :8081, routing to 2 backend(s)</code></pre>
 
       <div class="callout">
         No Ollama handy? Point a <code>backends</code> entry at any
-        OpenAI-compatible host instead — see <code>api_key</code> and
+        OpenAI-compatible host instead: see <code>api_key</code> and
         <code>path_prefix</code> under <a href="#configuration">Configuration</a>
         for gatewaying a hosted provider like Groq without your callers
         needing their own key.
@@ -256,7 +250,7 @@ inferouted: listening on :8081, routing to 2 backend(s)</code></pre>
       <pre><code>$ inferouted -config path/to/config.json   <span class="dim"># defaults to ./config.json</span>
 $ inferouted -h                            <span class="dim"># prints usage and exits</span></code></pre>
       <p>
-        No subcommands, no interactive mode — it's a daemon. Point it at a
+        No subcommands, no interactive mode: it's a daemon. Point it at a
         config file, it starts listening, <code>Ctrl-C</code> (or
         <code>SIGTERM</code>) shuts it down cleanly. A <code>SIGHUP</code>
         reloads <code>backends</code> and <code>model_aliases</code> from
@@ -277,13 +271,13 @@ $ inferouted -h                            <span class="dim"># prints usage and 
         <tr><td><code>listen_addr</code></td><td>Where inferoute itself listens, e.g. <code>:8081</code>.</td></tr>
         <tr><td><code>health_check_path</code>, <code>health_check_interval</code></td><td>Path to <code>GET</code> on each backend to check it's alive, and how often.</td></tr>
         <tr><td><code>backends[].name</code>, <code>.url</code>, <code>.models</code></td><td>Servers to route to. <code>models</code> is the list of model names that backend serves; two backends listing the same model get load-balanced between.</td></tr>
-        <tr><td><code>backends[].path_prefix</code></td><td>Prepended to the client's request path — for backends that mount their API under a path (Groq's OpenAI-compatible endpoint lives under <code>/openai</code>).</td></tr>
-        <tr><td><code>backends[].api_key</code></td><td>Sent as that backend's <code>Authorization: Bearer</code> header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know.</td></tr>
+        <tr><td><code>backends[].path_prefix</code></td><td>Prepended to the client's request path, for backends that mount their API under a path (Groq's OpenAI-compatible endpoint lives under <code>/openai</code>).</td></tr>
+        <tr><td><code>backends[].api_key</code></td><td>Sent as that backend's <code>Authorization: Bearer</code> header, overriding whatever the client sent, for gatewaying a hosted provider behind a key callers shouldn't need to know.</td></tr>
         <tr><td><code>rate_limit.enabled</code>, <code>.requests_per_second</code>, <code>.burst</code></td><td>Per-API-key token bucket (<code>Authorization: Bearer &lt;key&gt;</code>, falling back to remote IP). Off by default.</td></tr>
         <tr><td><code>rate_limit.redis_addr</code></td><td>Leave empty for a per-instance limiter. Set to share limit state across a fleet of inferoute instances via Redis.</td></tr>
         <tr><td><code>cache.enabled</code>, <code>.nucladb_addr</code></td><td>Semantic response caching, backed by a running <a href="https://github.com/Rakshit-gen/NuclaDB">NuclaDB</a> instance. Off by default.</td></tr>
         <tr><td><code>cache.embedding_backend_addr</code>, <code>.embedding_model</code></td><td>Ollama-compatible server and model used to embed prompts for cache lookups.</td></tr>
-        <tr><td><code>cache.max_distance</code></td><td>How close a cached prompt has to be to count as a hit — see <a href="#cache-notes">Semantic cache notes</a>, the naming is easy to get backwards.</td></tr>
+        <tr><td><code>cache.max_distance</code></td><td>How close a cached prompt has to be to count as a hit: see <a href="#cache-notes">Semantic cache notes</a>, the naming is easy to get backwards.</td></tr>
         <tr><td><code>cache.tenant_id</code></td><td>NuclaDB tenant inferoute's cache vectors are stored under.</td></tr>
         <tr><td><code>model_aliases</code></td><td>Maps a requested model name to one your backends actually serve, e.g. <code>{"gpt-4": "llama3"}</code>.</td></tr>
       </table>
@@ -294,9 +288,9 @@ $ inferouted -h                            <span class="dim"># prints usage and 
       <p>Everything inferoute itself serves, beyond the proxied <code>/v1/*</code> routes:</p>
       <table>
         <tr><th>Route</th><th>What it does</th></tr>
-        <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend — same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
+        <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend: same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
         <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, and current health.</td></tr>
-        <tr><td><code>GET /healthz</code></td><td>Liveness probe — always 200 once the process is up.</td></tr>
+        <tr><td><code>GET /healthz</code></td><td>Liveness probe: always 200 once the process is up.</td></tr>
         <tr><td><code>GET /metrics</code></td><td>Prometheus: request count by model/backend/status, latency histogram, cache hit/miss/error counts.</td></tr>
         <tr><td><code>GET /docs</code></td><td>This page, served straight from the running binary.</td></tr>
       </table>
@@ -317,16 +311,16 @@ $ inferouted -h                            <span class="dim"># prints usage and 
       </div>
       <div class="callout" style="margin-top:10px">
         <b><code>max_distance</code>, not a similarity threshold.</b>
-        NuclaDB's cosine "score" is <code>1 - cosine_similarity</code> — a
+        NuclaDB's cosine "score" is <code>1 - cosine_similarity</code>: a
         <i>distance</i>, where <code>0</code> means identical and larger
         means further apart. A smaller <code>max_distance</code> means a
-        stricter match — the opposite of what "similarity threshold" naming
+        stricter match, the opposite of what "similarity threshold" naming
         suggests, which is exactly the bug the first version of this cache
         had. Fixed by round-tripping identical and different prompts against
         a live server and checking the actual scores returned.
       </div>
       <p style="margin-top:16px">
-        Streaming responses are cached too, not just JSON ones — a cached
+        Streaming responses are cached too, not just JSON ones: a cached
         SSE stream is replayed as the exact bytes originally captured,
         confirmed via the <code>X-Inferoute-Cache: hit</code> response
         header on a hit.
@@ -337,24 +331,24 @@ $ inferouted -h                            <span class="dim"># prints usage and 
       <h2>Benchmarks</h2>
       <p>
         Measured against the real <code>inferouted</code> binary, not
-        estimated — one dev machine, load generator and gateway sharing the
+        estimated: one dev machine, load generator and gateway sharing the
         same CPU cores, so treat the absolute numbers as directional. The
         relative shape (small fixed overhead, huge cache win) is the real
         finding.
       </p>
-      <div class="label">Routing overhead — direct vs. through inferoute</div>
+      <div class="label">Routing overhead: direct vs. through inferoute</div>
       <table>
         <tr><th></th><th>Requests/sec</th><th>Mean latency</th><th>p50</th><th>p99</th></tr>
         <tr><td>Direct to backend</td><td>~11,400</td><td>1.8ms</td><td>0ms</td><td>1ms</td></tr>
         <tr><td>Through inferoute</td><td>~3,450</td><td>5.8ms</td><td>1ms</td><td>31ms</td></tr>
       </table>
-      <div class="label">Semantic cache — 20 trials each, 700ms simulated backend latency</div>
+      <div class="label">Semantic cache (20 trials each, 700ms simulated backend latency)</div>
       <table>
         <tr><th></th><th>Mean latency</th></tr>
         <tr><td>Cache miss (unique prompt, hits the backend)</td><td>705.7ms</td></tr>
         <tr><td>Cache hit (repeated prompt, served from NuclaDB)</td><td>0.80ms</td></tr>
       </table>
-      <p><b>~880x faster on a hit</b> — confirmed via the cache-hit response header on all 20 trials, not inferred from timing alone.</p>
+      <p><b>~880x faster on a hit</b> (confirmed via the cache-hit response header on all 20 trials, not inferred from timing alone).</p>
     </section>
 
     <section id="deploy">
@@ -374,7 +368,7 @@ $ inferouted -h                            <span class="dim"># prints usage and 
           <div class="label">Render</div>
           <p style="font-size:14px;color:var(--text-dim)">
             Deploys straight from <code>Dockerfile</code> as a plain web
-            service — health check <code>/healthz</code>, real config via a
+            service: health check <code>/healthz</code>, real config via a
             Secret File mounted at <code>/etc/secrets/config.json</code>.
             Full steps in the repo README's "Deploy to Render" section.
           </p>
@@ -382,23 +376,10 @@ $ inferouted -h                            <span class="dim"># prints usage and 
       </div>
     </section>
 
-    <section id="limitations">
-      <h2>Known limitations</h2>
-      <p>
-        Worth knowing rather than discovering the hard way: the semantic
-        cache has no TTL or eviction, so a long-running gateway's cache
-        tenant grows forever. Routing is round-robin only — no weighted or
-        least-latency selection. A backend that's flaky (failing some but
-        not all requests) is treated the same as fully healthy until a
-        health check happens to catch it; there's no circuit breaker. No
-        TLS termination — put it behind a reverse proxy for that today.
-      </p>
-    </section>
-
     <footer>
       Generated for the <a href="https://github.com/Rakshit-gen/inferoute">inferoute</a>
       project. Every example on this page was actually run against a real
-      binary — see the tests in <code>internal/proxy</code>,
+      binary; see the tests in <code>internal/proxy</code>,
       <code>internal/backend</code>, <code>internal/cache</code>, and
       <code>internal/ratelimit</code> for the same behavior in reproducible
       form.
