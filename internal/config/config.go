@@ -13,6 +13,15 @@ type Backend struct {
 	Name   string   `json:"name"`
 	URL    string   `json:"url"`
 	Models []string `json:"models"`
+	// PathPrefix is prepended to the client's request path before
+	// forwarding, for backends that mount their API under a path (e.g.
+	// Groq's OpenAI-compatible endpoint lives under /openai).
+	PathPrefix string `json:"path_prefix"`
+	// APIKey, if set, is sent as "Authorization: Bearer <APIKey>" to this
+	// backend, overriding whatever the client sent — for backends that need
+	// a credential the caller shouldn't have to know (e.g. gatewaying a
+	// hosted provider behind a gateway that itself holds the key).
+	APIKey string `json:"api_key"`
 }
 
 type RateLimit struct {

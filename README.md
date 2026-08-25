@@ -18,6 +18,36 @@ crowded problem. The layer that routes to them — load balancing, failover,
 caching, observability — is not, and it's infrastructure glue, which is
 what Go is for.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    Client(["Client"]) -->|"POST /v1/chat/completions"| GW["inferoute"]
+
+    GW -->|"per-key token bucket"| RL{"under rate limit?"}
+    RL -->|"no"| R429["429 Too Many Requests"]
+    RL -->|"yes"| CC{"semantic cache hit?<br/>(NuclaDB)"}
+
+    CC -->|"yes"| Hit["serve cached response<br/>X-Inferoute-Cache: hit"]
+    CC -->|"no"| Pick["pick next healthy backend<br/>(round-robin)"]
+
+    Pick --> B1["Backend 1<br/>(Ollama / vLLM)"]
+    Pick -.->|"5xx / timeout: retry next"| B2["Backend 2"]
+    B1 --> Store["store response in cache<br/>(async)"]
+    B2 --> Store
+
+    Hit --> Client
+    Store --> Client
+    R429 --> Client
+
+    HC["background health checker"] -.->|"GET health_check_path"| B1
+    HC -.-> B2
+    GW --> Metrics["/metrics (Prometheus)"]
+```
+
+Every arrow above is real request-handling code, not aspirational — see
+`internal/proxy/proxy.go` for the exact order of operations.
+
 ## Quickstart
 
 Run two Ollama instances serving the same model, so there's actually
@@ -127,7 +157,7 @@ one). Plain-English rundown of each section:
 |---|---|
 | `listen_addr` | The address inferoute itself listens on, e.g. `:8081`. |
 | `health_check_path`, `health_check_interval` | Which path to `GET` on each backend to check it's alive, and how often. |
-| `backends` | The list of servers to route to. Each entry is `{name, url, models}` — `models` is the list of model names that backend can serve; two backends listing the same model get load-balanced between. |
+| `backends` | The list of servers to route to. Each entry is `{name, url, models, path_prefix, api_key}` — `models` is the list of model names that backend can serve (two backends listing the same model get load-balanced between); `path_prefix` is prepended to the client's request path for backends that mount their API under a path (e.g. Groq's OpenAI-compatible endpoint lives under `/openai`, so `path_prefix: "/openai"` turns a client's `/v1/chat/completions` into `/openai/v1/chat/completions`); `api_key`, if set, is sent as that backend's `Authorization: Bearer` header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know. Both are optional and empty by default. |
 | `rate_limit.enabled` | Turn per-API-key rate limiting on or off. Off by default. |
 | `rate_limit.requests_per_second`, `.burst` | Steady-state rate and how many requests can burst above it before a caller starts getting `429`s. |
 | `rate_limit.redis_addr` | Leave empty for a per-instance limiter (fine for one gateway). Set to a `host:port` to share limit state across a fleet of inferoute instances via Redis instead. |
@@ -168,6 +198,38 @@ Every field has a sane default except `backends`, which is required.
 - **Metrics** (`/metrics`): request count by model/backend/status, request
   latency histogram by model, cache hit/miss/error counts. Point Prometheus
   or Grafana at it — no bundled dashboard; this is a backend-only tool.
+
+## Benchmarks
+
+Measured against the real `inferouted` binary — not estimated. Everything
+below ran on one dev machine (the load generator, fake backend, and gateway
+all sharing the same CPU cores), so treat the absolute numbers as
+directional rather than an isolated production benchmark; the relative
+shape (small fixed overhead, huge cache win) is the real finding.
+
+**Routing overhead** — `ab -n 2000 -c 20`, direct to a near-zero-latency
+backend vs. through inferoute (round-robin over 1 backend, no cache, no
+rate limit):
+
+| | Requests/sec | Mean latency | p50 | p99 |
+|---|---|---|---|---|
+| Direct to backend | ~11,400 | 1.8ms | 0ms | 1ms |
+| Through inferoute | ~3,450 | 5.8ms | 1ms | 31ms |
+
+A few milliseconds of routing/retry/body-parsing overhead under concurrent
+load — real, but small next to actual inference latency (hundreds of ms to
+seconds).
+
+**Semantic cache** — a backend with an artificial 700ms delay (standing in
+for real LLM inference time) behind a NuclaDB-backed cache, 20 trials each:
+
+| | Mean latency |
+|---|---|
+| Cache miss (unique prompt, hits the backend) | 705.7ms |
+| Cache hit (repeated prompt, served from NuclaDB) | 0.80ms |
+
+**~880x faster on a hit** — confirmed via the `X-Inferoute-Cache: hit`
+response header on all 20 hit requests, not inferred from timing alone.
 
 ## Semantic cache setup notes
 

@@ -118,6 +118,38 @@ func TestServeHTTPRejectsMissingModel(t *testing.T) {
 	}
 }
 
+func TestServeHTTPAppliesPathPrefixAndAPIKey(t *testing.T) {
+	var gotPath, gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer upstream.Close()
+
+	pool, err := backend.NewPool([]config.Backend{
+		{Name: "b", URL: upstream.URL, Models: []string{"llama3"}, PathPrefix: "/openai", APIKey: "server-side-key"},
+	})
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"llama3"}`))
+	req.Header.Set("Authorization", "Bearer client-supplied-key")
+	rec := httptest.NewRecorder()
+	New(pool).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/openai/v1/chat/completions" {
+		t.Fatalf("expected path prefix applied, got %q", gotPath)
+	}
+	if gotAuth != "Bearer server-side-key" {
+		t.Fatalf("expected backend's own api_key to override the client's, got %q", gotAuth)
+	}
+}
+
 func TestServeHTTPResolvesModelAlias(t *testing.T) {
 	var gotModel string
 	backendSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

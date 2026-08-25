@@ -15,8 +15,10 @@ import (
 )
 
 type Backend struct {
-	Name string
-	URL  *url.URL
+	Name       string
+	URL        *url.URL
+	PathPrefix string
+	APIKey     string
 
 	healthy atomic.Bool
 }
@@ -42,7 +44,7 @@ func NewPool(specs []config.Backend) (*Pool, error) {
 		}
 		b, ok := seen[s.Name]
 		if !ok {
-			b = &Backend{Name: s.Name, URL: u}
+			b = &Backend{Name: s.Name, URL: u, PathPrefix: s.PathPrefix, APIKey: s.APIKey}
 			b.healthy.Store(true) // assume healthy until the first check
 			seen[s.Name] = b
 			p.all = append(p.all, b)
