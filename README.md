@@ -43,9 +43,50 @@ curl localhost:8081/v1/chat/completions \
   -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}]}'
 ```
 
+You'll get back whatever Ollama returns, unmodified — inferoute just picked
+which of the two instances handled it:
+
+```json
+{"model":"llama3","message":{"role":"assistant","content":"..."}, ...}
+```
+
 Run it a few more times and kill one `ollama serve` process — the next
 request fails over to the survivor instead of erroring. `/metrics` serves
 Prometheus metrics, `/healthz` is a liveness probe.
+
+## CLI
+
+The binary is `inferouted`, and it has exactly one flag:
+
+```sh
+./bin/inferouted -config path/to/config.json   # defaults to ./config.json
+./bin/inferouted -h                            # prints usage and exits
+```
+
+There's no subcommand or interactive mode — it's a daemon: point it at a
+config file, it starts listening, `Ctrl-C` (or `SIGTERM`) shuts it down
+cleanly. Everything else is controlled through the config file below or by
+calling the HTTP API it serves.
+
+## Configuration
+
+Everything lives in one JSON file (see `config.example.json` for a working
+one). Plain-English rundown of each section:
+
+| Field | What it does |
+|---|---|
+| `listen_addr` | The address inferoute itself listens on, e.g. `:8081`. |
+| `health_check_path`, `health_check_interval` | Which path to `GET` on each backend to check it's alive, and how often. |
+| `backends` | The list of servers to route to. Each entry is `{name, url, models}` — `models` is the list of model names that backend can serve; two backends listing the same model get load-balanced between. |
+| `rate_limit.enabled` | Turn per-API-key rate limiting on or off. Off by default. |
+| `rate_limit.requests_per_second`, `.burst` | Steady-state rate and how many requests can burst above it before a caller starts getting `429`s. |
+| `cache.enabled` | Turn semantic response caching on or off. Off by default, and requires a running [NuclaDB](https://github.com/Rakshit-gen/NuclaDB) instance. |
+| `cache.nucladb_addr` | Where that NuclaDB instance is. |
+| `cache.embedding_backend_addr`, `.embedding_model` | Which Ollama-compatible server and model to use to turn a prompt into a vector for cache lookups. |
+| `cache.max_distance` | How close a cached prompt has to be to count as a hit — see the note below, the naming here is easy to get backwards. |
+| `cache.tenant_id` | The NuclaDB tenant inferoute's cache vectors are stored under. |
+
+Every field has a sane default except `backends`, which is required.
 
 ## Features
 
