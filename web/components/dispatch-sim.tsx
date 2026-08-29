@@ -138,7 +138,7 @@ export function DispatchSim() {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line px-4 py-3">
         <span className="eyebrow">dispatch · live simulation</span>
         <span className="text-xs text-ink-dim">
-          synthetic traffic — the same path a real request takes through inferoute
+          synthetic traffic, on the same path a real request takes through inferoute
         </span>
       </div>
 
@@ -157,6 +157,25 @@ export function DispatchSim() {
       {/* the pipe */}
       <div className="relative mx-4 my-8 h-24">
         <div className="wire absolute left-0 right-0 top-1/2 h-px -translate-y-1/2" />
+
+        {/* packets travel along the wire, behind the stage boxes */}
+        {!reduced &&
+          packets.current.map((pk) => {
+            const x = stageToPercent(pk.p)
+            return (
+              <span
+                key={pk.id}
+                className="pointer-events-none absolute top-1/2 z-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  left: `${x}%`,
+                  background: COLOR[pk.outcome.kind],
+                  opacity: Math.max(0, Math.min(1, pk.fade)),
+                  boxShadow: `0 0 8px ${COLOR[pk.outcome.kind]}`,
+                }}
+              />
+            )
+          })}
+
         {STAGE_X.map((x, i) => {
           const active =
             (i === 1 && rateLimit) ||
@@ -168,7 +187,7 @@ export function DispatchSim() {
           return (
             <div
               key={i}
-              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+              className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
               style={{ left: `${x}%` }}
             >
               <div
@@ -187,23 +206,6 @@ export function DispatchSim() {
             </div>
           )
         })}
-
-        {!reduced &&
-          packets.current.map((pk) => {
-            const x = stageToPercent(pk.p)
-            return (
-              <span
-                key={pk.id}
-                className="pointer-events-none absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                style={{
-                  left: `${x}%`,
-                  background: COLOR[pk.outcome.kind],
-                  opacity: Math.max(0, Math.min(1, pk.fade)),
-                  boxShadow: `0 0 8px ${COLOR[pk.outcome.kind]}`,
-                }}
-              />
-            )
-          })}
 
         {reduced && (
           <p className="absolute inset-x-0 bottom-0 text-center text-[0.65rem] text-ink-dim">
@@ -281,7 +283,7 @@ export function DispatchSim() {
           </div>
           {!anyHealthy && (
             <p className="mt-2 text-xs text-alert">
-              every backend is down — the gateway now returns 503 until one recovers.
+              every backend is down: the gateway now returns 503 until one recovers.
             </p>
           )}
         </div>

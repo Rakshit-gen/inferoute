@@ -19,7 +19,7 @@ export class AuthError extends Error {}
 /**
  * The tenant is the active Clerk organization when there is one, otherwise
  * the signed-in user. Data lives in that entity's privateMetadata, which
- * `auth()` + `clerkClient` only ever expose for the current caller — so
+ * `auth()` + `clerkClient` only ever expose for the current caller, so
  * tenant A physically cannot read tenant B's connections or reach B's
  * gateway.
  */
@@ -88,7 +88,7 @@ export async function setActiveConnection(id: string): Promise<void> {
 /**
  * Resolves which of the caller's connections to read from. An id that is
  * not in this tenant's own list resolves to their active/first connection,
- * never another tenant's — you can only ever address your own.
+ * never another tenant's. You can only ever address your own.
  */
 export async function activeConnection(explicitId?: string | null): Promise<Connection | null> {
   const data = await loadTenant()

@@ -1,5 +1,5 @@
 // Minimal Prometheus text-exposition parser, scoped to the three metric
-// families inferoute exposes. Not a general implementation — it handles the
+// families inferoute exposes. Not a general implementation: it handles the
 // `name{label="v",...} value` line shape and nothing exotic.
 
 export interface Sample {

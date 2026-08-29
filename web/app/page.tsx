@@ -8,7 +8,7 @@ const flow = [
     n: '01',
     k: 'route',
     title: 'Ingress',
-    body: 'A caller sends an OpenAI-shaped POST /v1/chat/completions. inferoute reads the model field from the body — nothing else about the request needs to change.',
+    body: 'A caller sends an OpenAI-shaped POST /v1/chat/completions. inferoute reads the model field from the body. Nothing else about the request needs to change.',
   },
   {
     n: '02',
@@ -20,7 +20,7 @@ const flow = [
     n: '03',
     k: 'cache',
     title: 'Semantic cache',
-    body: 'If caching is on, the prompt is embedded and looked up in NuclaDB. A close-enough match is served straight from cache — a streamed response is replayed chunk for chunk.',
+    body: 'If caching is on, the prompt is embedded and looked up in NuclaDB. A close-enough match is served straight from cache (a streamed response is replayed chunk for chunk).',
   },
   {
     n: '04',
@@ -146,7 +146,7 @@ export default function Landing() {
       <section>
         <DispatchSim />
         <p className="mt-2 text-xs text-ink-dim">
-          Drive the load, toggle cache and the rate limit, knock backends offline — the
+          Drive the load, toggle cache and the rate limit, knock backends offline. The
           pipeline responds the way the real gateway would.
         </p>
       </section>

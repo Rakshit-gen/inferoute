@@ -40,7 +40,7 @@ function Wire({ active }: { active?: boolean }) {
   )
 }
 
-/** Animated synthetic traffic — the page's signature element. */
+/** Animated synthetic traffic: the dashboard's compact routing strip. */
 export function DispatchStrip({
   rateLimit,
   cache,
