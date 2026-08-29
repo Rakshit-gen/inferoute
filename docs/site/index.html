@@ -289,7 +289,9 @@ $ inferouted -h                            <span class="dim"># prints usage and 
       <table>
         <tr><th>Route</th><th>What it does</th></tr>
         <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend: same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
-        <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, and current health.</td></tr>
+        <tr><td><code>GET /v1/models</code></td><td>OpenAI-compatible model list: every model a backend serves plus every alias. SDKs call this to populate model pickers.</td></tr>
+        <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, models, and current health.</td></tr>
+        <tr><td><code>GET /v1/config</code></td><td>Active model aliases, health-check interval, and whether rate limiting, caching, and API-key auth are on.</td></tr>
         <tr><td><code>GET /healthz</code></td><td>Liveness probe: always 200 once the process is up.</td></tr>
         <tr><td><code>GET /metrics</code></td><td>Prometheus: request count by model/backend/status, latency histogram, cache hit/miss/error counts.</td></tr>
         <tr><td><code>GET /docs</code></td><td>This page, served straight from the running binary.</td></tr>

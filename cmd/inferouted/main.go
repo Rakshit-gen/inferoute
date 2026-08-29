@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 	"time"
 
@@ -114,6 +115,31 @@ func main() {
 			},
 			"api_keys_required": gate.Required(),
 		})
+	})
+	// OpenAI-compatible model list: the union of every model a backend
+	// serves and every alias a client can ask for. SDKs call this to
+	// populate model pickers. Ungated, like the other introspection.
+	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
+		ids := map[string]bool{}
+		for _, m := range h.CurrentPool().Models() {
+			ids[m] = true
+		}
+		for alias := range h.Aliases() {
+			ids[alias] = true
+		}
+		sorted := make([]string, 0, len(ids))
+		for id := range ids {
+			sorted = append(sorted, id)
+		}
+		sort.Strings(sorted)
+		data := make([]map[string]any, 0, len(sorted))
+		for _, id := range sorted {
+			data = append(data, map[string]any{
+				"id": id, "object": "model", "created": 0, "owned_by": "inferoute",
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
 	})
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })

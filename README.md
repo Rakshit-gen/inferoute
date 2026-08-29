@@ -89,16 +89,28 @@ which of the two instances handled it:
 {"model":"llama3","message":{"role":"assistant","content":"..."}, ...}
 ```
 
-Run it a few more times and kill one `ollama serve` process — the next
+Run it a few more times and kill one `ollama serve` process: the next
 request fails over to the survivor instead of erroring. `/metrics` serves
-Prometheus metrics, `/healthz` is a liveness probe, `/v1/backends`
-reports each backend's name, models, and current health, `/v1/config`
-reports the model aliases and which features are enabled, and `/docs`
-serves a full documentation page straight from the running binary:
+Prometheus metrics, `/healthz` is a liveness probe, `/v1/models` lists the
+served models (OpenAI shape, for SDKs), `/v1/backends` reports each
+backend's name, models, and current health, `/v1/config` reports the model
+aliases and which features are enabled, and `/docs` serves a full
+documentation page straight from the running binary:
 
 ```sh
 curl localhost:8081/v1/backends
 # [{"name":"ollama-1","url":"http://localhost:11434","models":["llama3"],"healthy":true}, ...]
+```
+
+### No GPUs handy?
+
+`scripts/local-stack.sh` builds and runs the gateway in front of two mock
+inference backends (`scripts/mock-openai-backend`, which echoes prompts back
+and can stream), so you can exercise routing, failover, streaming, and the
+dashboard with nothing but Go installed:
+
+```sh
+./scripts/local-stack.sh          # gateway on :8091, Ctrl-C stops it
 ```
 
 Or skip the local Go/Ollama install and run everything in containers:
@@ -208,8 +220,9 @@ Every field has a sane default except `backends`, which is required.
 - **Config hot-reload**: `SIGHUP` reloads `backends` and `model_aliases`
   from the config file without dropping in-flight requests or restarting
   the process.
-- **Introspection** (`/v1/backends`): JSON list of every backend's name,
-  URL, and current health.
+- **Introspection**: `/v1/models` (OpenAI-compatible model list),
+  `/v1/backends` (every backend's name, URL, models, health), and
+  `/v1/config` (aliases and which features are on).
 - **Metrics** (`/metrics`): request count by model/backend/status, request
   latency histogram by model, cache hit/miss/error counts. Point Prometheus
   or Grafana at it.

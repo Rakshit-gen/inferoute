@@ -91,3 +91,15 @@ func TestSnapshotReportsHealth(t *testing.T) {
 		t.Fatalf("unexpected snapshot: %+v", snap)
 	}
 }
+
+func TestModelsSortedUnique(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"mistral", "llama3"}},
+		{Name: "b", URL: "http://b", Models: []string{"llama3"}},
+	})
+	got := p.Models()
+	want := []string{"llama3", "mistral"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("Models() = %v, want %v", got, want)
+	}
+}

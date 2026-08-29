@@ -84,6 +84,17 @@ func (p *Pool) Next(model string) (*Backend, error) {
 
 func (p *Pool) MarkUnhealthy(b *Backend) { b.healthy.Store(false) }
 
+// Models returns every model name any backend in the pool serves, sorted
+// and de-duplicated. Backs the OpenAI-compatible GET /v1/models.
+func (p *Pool) Models() []string {
+	out := make([]string, 0, len(p.byModel))
+	for m := range p.byModel {
+		out = append(out, m)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Status is a point-in-time snapshot of one backend, for introspection.
 type Status struct {
 	Name    string   `json:"name"`
