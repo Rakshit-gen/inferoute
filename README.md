@@ -178,6 +178,7 @@ one). Plain-English rundown of each section:
 | `cache.tenant_id` | The NuclaDB tenant inferoute's cache vectors are stored under. |
 | `model_aliases` | Maps a requested model name to the one your backends actually serve, e.g. `{"gpt-4": "llama3"}` routes `gpt-4` requests to whatever backend lists `llama3`. Empty by default (no aliasing). |
 | `cors_origins` | Browser origins allowed to call the HTTP API (the `web/` dashboard, and the playground's `POST /v1/chat/completions`). A single `["*"]` allows any origin; otherwise list each exactly. Defaults to `["*"]`. Non-browser clients send no `Origin` and are unaffected. |
+| `api_keys` | Allowlist of bearer tokens accepted on `POST /v1/chat/completions`. When non-empty, any request without a listed `Authorization: Bearer <key>` gets `401`. Empty (the default) leaves the proxy open. Reloaded on `SIGHUP`. Introspection (`/v1/backends`, `/v1/config`, `/metrics`) is not gated — firewall it or put a reverse proxy in front if it needs protecting. |
 
 Every field has a sane default except `backends`, which is required.
 
@@ -196,6 +197,9 @@ Every field has a sane default except `backends`, which is required.
   (`Authorization: Bearer <key>`, falling back to remote IP). 429 over the
   limit. In-process by default; set `rate_limit.redis_addr` to share the
   limit across multiple inferoute instances behind a load balancer instead.
+- **API-key auth** (`api_keys` in config): an allowlist of bearer tokens.
+  Non-empty means `POST /v1/chat/completions` requires a listed key (401
+  otherwise); empty leaves the proxy open. Reloaded on `SIGHUP`.
 - **Semantic caching** (`cache` in config): chat requests — streaming
   included — are embedded (via an Ollama-compatible `/api/embeddings`
   endpoint), looked up in NuclaDB, and served from cache on a close match; a

@@ -29,5 +29,6 @@
     "tenant_id": "inferoute-cache"
   },
   "model_aliases": {},
-  "cors_origins": ["*"]
+  "cors_origins": ["*"],
+  "api_keys": []
 }

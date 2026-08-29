@@ -32,6 +32,7 @@ const configFields: [string, string][] = [
   ['cache', '{ enabled, nucladb_addr, embedding_backend_addr, embedding_model, max_distance, tenant_id }. Needs a running NuclaDB. max_distance is a distance, not a similarity — smaller is stricter.'],
   ['model_aliases', 'Map a requested model name to one your backends actually serve, e.g. {"gpt-4": "llama3"}.'],
   ['cors_origins', 'Browser origins allowed to call the API (this dashboard). ["*"] allows any; default ["*"].'],
+  ['api_keys', 'Allowlist of bearer tokens for POST /v1/chat/completions. Non-empty → requests without a listed Authorization: Bearer <key> get 401. Empty (default) leaves the proxy open. Reloaded on SIGHUP. Introspection and /metrics are not gated.'],
 ]
 
 export default function Docs() {

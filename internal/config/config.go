@@ -57,6 +57,11 @@ type Config struct {
 	// API (the dashboard at web/, plus the playground's POST). A single "*"
 	// entry allows any origin. Defaults to ["*"].
 	CORSOrigins []string `json:"cors_origins"`
+	// APIKeys, when non-empty, is the allowlist of bearer tokens accepted on
+	// POST /v1/chat/completions — any other request gets 401. Empty (the
+	// default) leaves the proxy open, matching inferoute's default posture.
+	// Reloaded on SIGHUP alongside backends.
+	APIKeys []string `json:"api_keys"`
 }
 
 func Load(path string) (*Config, error) {
@@ -74,6 +79,7 @@ func Load(path string) (*Config, error) {
 		Cache               Cache             `json:"cache"`
 		ModelAliases        map[string]string `json:"model_aliases"`
 		CORSOrigins         []string          `json:"cors_origins"`
+		APIKeys             []string          `json:"api_keys"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
@@ -87,6 +93,7 @@ func Load(path string) (*Config, error) {
 		Cache:           raw.Cache,
 		ModelAliases:    raw.ModelAliases,
 		CORSOrigins:     raw.CORSOrigins,
+		APIKeys:         raw.APIKeys,
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"

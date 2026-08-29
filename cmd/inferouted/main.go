@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	site "github.com/Rakshit-gen/inferoute/docs/site"
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
@@ -83,6 +84,14 @@ func main() {
 		handler = ratelimit.Middleware(limiter, h)
 	}
 
+	// API-key allowlist, outermost so an unauthorized caller is rejected
+	// before it costs a rate-limit token. No keys configured => pass-through.
+	gate := apiauth.New(cfg.APIKeys)
+	handler = gate.Middleware(handler)
+	if gate.Required() {
+		log.Printf("inferouted: API-key auth enabled (%d key(s)) on /v1/chat/completions", len(cfg.APIKeys))
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", handler)
 	mux.HandleFunc("/v1/backends", func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +112,7 @@ func main() {
 				"enabled":      cfg.Cache.Enabled,
 				"max_distance": cfg.Cache.MaxDistance,
 			},
+			"api_keys_required": gate.Required(),
 		})
 	})
 	mux.Handle("/metrics", promhttp.Handler())
@@ -120,9 +130,9 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	// A SIGHUP reloads the backend list from configPath without restarting
-	// the process. Rate limit and cache settings are not reloaded — only
-	// the routing table.
+	// A SIGHUP reloads the backend list, model aliases, and API-key
+	// allowlist from configPath without restarting the process. Rate limit
+	// and cache settings are not reloaded.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	go func() {
@@ -141,6 +151,7 @@ func main() {
 			stopHealthChecks = startHealthChecks(newPool)
 			h.SetPool(newPool)
 			h.SetAliases(newCfg.ModelAliases)
+			gate.Set(newCfg.APIKeys)
 			log.Printf("inferouted: reloaded config from %s, now routing to %d backend(s)", *configPath, len(newCfg.Backends))
 		}
 	}()
