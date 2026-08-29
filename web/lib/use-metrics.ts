@@ -8,11 +8,13 @@ import { parsePrometheus, summarize, MetricsView } from './metrics'
 const MAX_POINTS = 40
 
 /** Polls /metrics, parses it, and keeps short req/s and p99 histories. */
-export function useMetrics(intervalMs = 4000) {
+export function useMetrics(intervalMs = 4000, enabled = true) {
   const { data, error, isLoading } = useQuery({
     queryKey: ['metrics'],
     queryFn: fetchMetricsText,
     refetchInterval: intervalMs,
+    enabled,
+    retry: false,
   })
 
   const [view, setView] = useState<MetricsView | undefined>()

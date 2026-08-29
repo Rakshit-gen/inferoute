@@ -21,7 +21,7 @@ export function BackendBoard({ metrics }: { metrics?: MetricsView }) {
       {isLoading && <p className="text-sm text-ink-dim">connecting…</p>}
       {error && (
         <p className="text-sm text-alert">
-          can’t reach the gateway — check NEXT_PUBLIC_INFEROUTE_URL and CORS
+          can’t reach the gateway — check the active connection on the Connections page
         </p>
       )}
       <ul className="divide-y divide-line">

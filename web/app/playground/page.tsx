@@ -3,7 +3,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchBackends, fetchConfig, sendChat, ChatResult } from '@/lib/api'
+import { useConnections } from '@/lib/use-connections'
 import { DispatchTrace } from '@/components/dispatch-strip'
+import { EmptyGateway } from '@/components/empty-gateway'
 import { ms } from '@/lib/format'
 
 function prettyBody(body: string): string {
@@ -24,8 +26,10 @@ function extractContent(body: string): string | null {
 }
 
 export default function Playground() {
-  const { data: backends } = useQuery({ queryKey: ['backends'], queryFn: fetchBackends })
-  const { data: config } = useQuery({ queryKey: ['config'], queryFn: fetchConfig })
+  const { active, isLoading: connLoading } = useConnections()
+  const ready = Boolean(active)
+  const { data: backends } = useQuery({ queryKey: ['backends'], queryFn: fetchBackends, enabled: ready })
+  const { data: config } = useQuery({ queryKey: ['config'], queryFn: fetchConfig, enabled: ready })
 
   const models = useMemo(() => {
     const s = new Set<string>()
@@ -36,7 +40,6 @@ export default function Playground() {
 
   const [model, setModel] = useState('')
   const [prompt, setPrompt] = useState('In one sentence, what is a reverse proxy?')
-  const [apiKey, setApiKey] = useState('')
   const [result, setResult] = useState<ChatResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -52,7 +55,7 @@ export default function Playground() {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      setResult(await sendChat(effectiveModel, prompt, apiKey, ctrl.signal))
+      setResult(await sendChat(effectiveModel, prompt, ctrl.signal))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'request failed')
     } finally {
@@ -62,12 +65,21 @@ export default function Playground() {
 
   const content = result ? extractContent(result.body) : null
 
+  if (!connLoading && !active) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Playground</h1>
+        <EmptyGateway />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold tracking-tight">Playground</h1>
         <p className="text-sm text-ink-dim">
-          Send one completion through the gateway and see exactly how it was routed.
+          Send one completion through your active gateway and see exactly how it was routed.
         </p>
       </div>
 
@@ -100,20 +112,6 @@ export default function Playground() {
             />
           </div>
 
-          <div>
-            <label className="eyebrow mb-1 block">api key · optional</label>
-            <input
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              type="password"
-              placeholder="sent as Authorization: Bearer …"
-              className="w-full rounded border border-line bg-panel-2 px-2 py-1.5 font-mono text-sm outline-none focus:border-route"
-            />
-            <p className="mt-1 text-[0.65rem] text-ink-dim">
-              Held in this tab only — used for rate-limit bucketing and gated backends.
-            </p>
-          </div>
-
           <button
             onClick={run}
             disabled={pending || !effectiveModel || !prompt.trim()}
@@ -128,8 +126,8 @@ export default function Playground() {
             <div className="panel border-alert/40 p-4 text-sm text-alert">
               {error}
               <p className="mt-1 text-xs text-ink-dim">
-                If this is a CORS or network error, confirm the gateway URL and that its
-                <span className="font-mono"> cors_origins</span> allows this page.
+                If this keeps failing, check the active connection&apos;s URL and API key on the
+                <span className="font-mono"> Connections</span> page.
               </p>
             </div>
           )}

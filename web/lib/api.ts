@@ -1,6 +1,6 @@
-export const GATEWAY_URL = (
-  process.env.NEXT_PUBLIC_INFEROUTE_URL || 'http://localhost:8081'
-).replace(/\/$/, '')
+// The browser never talks to a gateway directly. Every call goes to this
+// app's own /api/gateway/* routes, which attach the signed-in tenant's
+// connection + key server-side. See lib/gateway-proxy.ts.
 
 export interface Backend {
   name: string
@@ -16,17 +16,27 @@ export interface GatewayConfig {
   cache: { enabled: boolean; max_distance: number }
 }
 
+/** Thrown when the tenant has no active gateway connection (HTTP 409). */
+export class NoGatewayError extends Error {
+  constructor() {
+    super('no gateway connected')
+    this.name = 'NoGatewayError'
+  }
+}
+
 async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${GATEWAY_URL}${path}`, { cache: 'no-store' })
+  const res = await fetch(`/api/gateway${path}`, { cache: 'no-store' })
+  if (res.status === 409) throw new NoGatewayError()
   if (!res.ok) throw new Error(`${path} → ${res.status}`)
   return res.json() as Promise<T>
 }
 
-export const fetchBackends = () => getJSON<Backend[]>('/v1/backends')
-export const fetchConfig = () => getJSON<GatewayConfig>('/v1/config')
+export const fetchBackends = () => getJSON<Backend[]>('/backends')
+export const fetchConfig = () => getJSON<GatewayConfig>('/config')
 
 export async function fetchMetricsText(): Promise<string> {
-  const res = await fetch(`${GATEWAY_URL}/metrics`, { cache: 'no-store' })
+  const res = await fetch('/api/gateway/metrics', { cache: 'no-store' })
+  if (res.status === 409) throw new NoGatewayError()
   if (!res.ok) throw new Error(`/metrics → ${res.status}`)
   return res.text()
 }
@@ -39,24 +49,17 @@ export interface ChatResult {
   body: string
 }
 
-/** Sends one completion through the gateway and reports how it was routed. */
+/** Sends one completion through the tenant's gateway and reports the routing. */
 export async function sendChat(
   model: string,
   prompt: string,
-  apiKey: string,
   signal?: AbortSignal,
 ): Promise<ChatResult> {
   const started = performance.now()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey.trim()) headers['Authorization'] = `Bearer ${apiKey.trim()}`
-
-  const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+  const res = await fetch('/api/gateway/chat', {
     method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] }),
     signal,
   })
   const body = await res.text()

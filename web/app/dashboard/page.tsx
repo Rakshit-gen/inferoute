@@ -3,16 +3,29 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchBackends, fetchConfig } from '@/lib/api'
 import { useMetrics } from '@/lib/use-metrics'
+import { useConnections } from '@/lib/use-connections'
 import { DispatchStrip } from '@/components/dispatch-strip'
 import { BackendBoard } from '@/components/backend-board'
 import { Traffic } from '@/components/traffic'
 import { RoutingTable } from '@/components/routing-table'
 import { CachePanel } from '@/components/cache-panel'
+import { EmptyGateway } from '@/components/empty-gateway'
 
 export default function Dashboard() {
-  const { view, rateHistory, latencyHistory } = useMetrics()
-  const { data: backends } = useQuery({ queryKey: ['backends'], queryFn: fetchBackends, refetchInterval: 5000 })
-  const { data: config } = useQuery({ queryKey: ['config'], queryFn: fetchConfig, refetchInterval: 15000 })
+  const { active, isLoading: connLoading } = useConnections()
+  const gatewayReady = Boolean(active)
+  const { view, rateHistory, latencyHistory } = useMetrics(4000, gatewayReady)
+  const { data: backends } = useQuery({ queryKey: ['backends'], queryFn: fetchBackends, refetchInterval: 5000, enabled: gatewayReady })
+  const { data: config } = useQuery({ queryKey: ['config'], queryFn: fetchConfig, refetchInterval: 15000, enabled: gatewayReady })
+
+  if (!connLoading && !active) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Dispatch</h1>
+        <EmptyGateway />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

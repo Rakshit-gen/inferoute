@@ -1,11 +1,9 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
-  // Static export: the dashboard is a pure client that talks to a running
-  // inferouted over its HTTP API. Deploy the `out/` dir anywhere static.
-  output: 'export',
-  images: { unoptimized: true },
+  // Not a static export anymore: Clerk auth + the per-tenant BFF routes
+  // under app/api/* need the Node runtime. Still deploys to Vercel as-is.
   env: {
-    NEXT_PUBLIC_INFEROUTE_URL:
-      process.env.NEXT_PUBLIC_INFEROUTE_URL || 'http://localhost:8081',
+    // Optional: pre-fills the "add connection" form in dev.
+    NEXT_PUBLIC_DEFAULT_GATEWAY_URL: process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL || '',
   },
 }
