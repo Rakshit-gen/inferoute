@@ -21,8 +21,8 @@ interface Runner {
   trail: number
 }
 
-const R = 34 // hex circumradius, px
-const BASE_ALPHA = 0.05
+const R = 54 // hex circumradius, px
+const BASE_ALPHA = 0.11
 const LIME = '#c6f24e'
 const VIOLET = '#9b8cff'
 
@@ -109,9 +109,9 @@ export function HexField() {
         edge,
         fromKey: Math.random() < 0.5 ? edge.aKey : edge.bKey,
         t: Math.random(),
-        speed: 0.22 + Math.random() * 0.5,
+        speed: 1.1 + Math.random() * 1.4,
         color: Math.random() < 0.22 ? VIOLET : LIME,
-        trail: 0.45 + Math.random() * 0.8,
+        trail: 0.35 + Math.random() * 0.5,
       }
     }
 
@@ -124,7 +124,7 @@ export function HexField() {
       cv2.style.width = `${w}px`
       cv2.style.height = `${h}px`
       buildGrid()
-      const count = Math.max(6, Math.min(24, Math.round((w * h) / 95000)))
+      const count = Math.max(5, Math.min(18, Math.round((w * h) / 130000)))
       runners = Array.from({ length: count }, spawn)
       if (reduce) drawStatic()
     }
@@ -133,23 +133,31 @@ export function HexField() {
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
       g.clearRect(0, 0, w, h)
       g.strokeStyle = `rgba(232, 237, 234, ${BASE_ALPHA})`
-      g.lineWidth = 1
+      g.lineWidth = 0.7
       g.stroke(base)
     }
 
     function drawStatic() {
       drawBase()
       g.globalCompositeOperation = 'lighter'
-      for (let i = 0; i < 40; i++) {
+      g.lineCap = 'round'
+      g.lineWidth = 0.9
+      for (let i = 0; i < 30; i++) {
         const e = edges[(Math.random() * edges.length) | 0]
-        const p = lerp(e.a, e.b, Math.random())
-        g.fillStyle = Math.random() < 0.22 ? VIOLET : LIME
-        g.globalAlpha = 0.5
+        const s = Math.random() * 0.6
+        const p1 = lerp(e.a, e.b, s)
+        const p2 = lerp(e.a, e.b, s + 0.3)
+        const grad = g.createLinearGradient(p1.x, p1.y, p2.x, p2.y)
+        const col = Math.random() < 0.22 ? VIOLET : LIME
+        grad.addColorStop(0, `${col}00`)
+        grad.addColorStop(0.5, `${col}aa`)
+        grad.addColorStop(1, `${col}00`)
+        g.strokeStyle = grad
         g.beginPath()
-        g.arc(p.x, p.y, 1.4, 0, Math.PI * 2)
-        g.fill()
+        g.moveTo(p1.x, p1.y)
+        g.lineTo(p2.x, p2.y)
+        g.stroke()
       }
-      g.globalAlpha = 1
       g.globalCompositeOperation = 'source-over'
     }
 
@@ -172,23 +180,17 @@ export function HexField() {
         const head = lerp(from, to, clamp01(rn.t))
         const tail = lerp(from, to, clamp01(rn.t - rn.trail))
 
+        // Fade at both ends so the moving light reads as a streak, not a dot.
         const grad = g.createLinearGradient(tail.x, tail.y, head.x, head.y)
         grad.addColorStop(0, `${rn.color}00`)
-        grad.addColorStop(1, rn.color)
+        grad.addColorStop(0.65, `${rn.color}aa`)
+        grad.addColorStop(1, `${rn.color}00`)
         g.strokeStyle = grad
-        g.lineWidth = 1.6
+        g.lineWidth = 0.9
         g.beginPath()
         g.moveTo(tail.x, tail.y)
         g.lineTo(head.x, head.y)
         g.stroke()
-
-        g.fillStyle = rn.color
-        g.shadowColor = rn.color
-        g.shadowBlur = 8
-        g.beginPath()
-        g.arc(head.x, head.y, 1.7, 0, Math.PI * 2)
-        g.fill()
-        g.shadowBlur = 0
       }
       g.globalCompositeOperation = 'source-over'
     }
@@ -221,7 +223,7 @@ export function HexField() {
       ref={ref}
       aria-hidden="true"
       className="pointer-events-none fixed inset-0 -z-10"
-      style={{ opacity: 0.9 }}
+      style={{ opacity: 0.5 }}
     />
   )
 }
