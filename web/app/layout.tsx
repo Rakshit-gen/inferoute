@@ -3,6 +3,7 @@ import { Chakra_Petch, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { Nav } from '@/components/nav'
+import { HexField } from '@/components/hex-field'
 
 const display = Chakra_Petch({
   subsets: ['latin'],
@@ -29,9 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen">
+        <HexField />
         <Providers>
           <Nav />
-          <main className="mx-auto max-w-6xl px-4 pb-24 pt-6">{children}</main>
+          <main className="relative mx-auto max-w-6xl px-4 pb-24 pt-6">{children}</main>
         </Providers>
       </body>
     </html>

@@ -16,13 +16,13 @@
   --warn: #f5c518;
 }
 
-html,
-body {
+html {
   background: var(--void);
-  color: var(--ink);
 }
 
 body {
+  /* transparent so the fixed HexField canvas behind it shows through */
+  color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
