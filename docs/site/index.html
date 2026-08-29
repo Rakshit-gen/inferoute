@@ -160,10 +160,11 @@
       <p class="lede">
         An OpenAI-compatible inference gateway written in Go. Point your
         client at inferoute the same way you'd point it at OpenAI, and it
-        round-robins requests across whichever LLM backends you give it
-        (several Ollama or vLLM instances, or a hosted provider like Groq),
-        fails over on error, streams responses through unbuffered, and
-        optionally caches repeat requests so they never hit a backend twice.
+        load-balances requests across whichever LLM backends you give it
+        (several Ollama or vLLM instances, or a hosted provider like Groq)
+        by round-robin, least-pending, or weighted strategy, fails over on
+        error, streams responses through unbuffered, and optionally caches
+        repeat requests so they never hit a backend twice.
       </p>
 
       <div class="hero-terminal">

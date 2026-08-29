@@ -198,10 +198,20 @@ Every field has a sane default except `backends`, which is required.
 ## Features
 
 - **Routing + failover**: reads `model` from the request body (resolved
-  through `model_aliases` first, if configured), load-balances across
-  healthy backends registered for it (`load_balancing`: `round_robin`,
-  `least_pending`, or `weighted`), retries the next one on a connection
-  error or 5xx.
+  through `model_aliases` first, if configured), picks a healthy backend
+  registered for it, and retries the next one on a connection error or 5xx
+  (up to 3 attempts, marking the failed backend unhealthy).
+- **Load balancing** (`load_balancing` in config): how the healthy backends
+  for a model share traffic.
+  - `round_robin` (default): even rotation. Best when every backend is the
+    same size and requests cost about the same.
+  - `least_pending`: send each request to the backend with the fewest
+    in-flight requests right now. Best when request durations vary a lot
+    (a long generation on one backend won't keep drawing new requests to
+    it) or when backends have uneven capacity.
+  - `weighted`: random, biased by each backend's `weight` (default 1). Put
+    a bigger `weight` on the bigger box, e.g. `weight: 4` on an 8×A100 node
+    next to `weight: 1` on a single-GPU one.
 - **Streaming**: SSE responses are flushed to the client chunk-by-chunk as
   the backend produces them, not buffered.
 - **Model aliasing** (`model_aliases` in config): let callers request a
