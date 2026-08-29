@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { DispatchSim } from '@/components/dispatch-sim'
+import { Logo } from '@/components/logo'
 
 const GITHUB = 'https://github.com/Rakshit-gen/inferoute'
 
@@ -108,7 +109,8 @@ export default function Landing() {
   return (
     <div className="space-y-20">
       <section className="pt-8">
-        <p className="eyebrow">OpenAI-compatible inference gateway</p>
+        <Logo className="h-11 w-11 text-ink" />
+        <p className="eyebrow mt-5">OpenAI-compatible inference gateway</p>
         <h1 className="mt-3 font-display text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl">
           Route, cache, and rate-limit
           <br />

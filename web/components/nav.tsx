@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton, useAuth } from '@clerk/nextjs'
 import { fetchMetricsText } from '@/lib/api'
+import { Logo } from '@/components/logo'
 import { parsePrometheus, summarize } from '@/lib/metrics'
 import { useEffect, useRef, useState } from 'react'
 
@@ -52,7 +53,8 @@ export function Nav() {
   return (
     <header className="relative z-10 border-b border-line bg-panel/60 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-        <Link href="/" className="font-display text-lg font-bold tracking-tight text-ink">
+        <Link href="/" className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-ink">
+          <Logo className="h-6 w-6" />
           infer<span className="text-route">oute</span>
         </Link>
         <SignedIn>
