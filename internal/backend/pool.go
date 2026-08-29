@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +20,7 @@ type Backend struct {
 	URL        *url.URL
 	PathPrefix string
 	APIKey     string
+	Models     []string
 
 	healthy atomic.Bool
 }
@@ -54,6 +56,9 @@ func NewPool(specs []config.Backend) (*Pool, error) {
 			if p.counters[m] == nil {
 				p.counters[m] = new(atomic.Uint64)
 			}
+			if !slices.Contains(b.Models, m) {
+				b.Models = append(b.Models, m)
+			}
 		}
 	}
 	return p, nil
@@ -81,16 +86,17 @@ func (p *Pool) MarkUnhealthy(b *Backend) { b.healthy.Store(false) }
 
 // Status is a point-in-time snapshot of one backend, for introspection.
 type Status struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Healthy bool   `json:"healthy"`
+	Name    string   `json:"name"`
+	URL     string   `json:"url"`
+	Models  []string `json:"models"`
+	Healthy bool     `json:"healthy"`
 }
 
 // Snapshot returns the current health of every backend in the pool.
 func (p *Pool) Snapshot() []Status {
 	out := make([]Status, len(p.all))
 	for i, b := range p.all {
-		out[i] = Status{Name: b.Name, URL: b.URL.String(), Healthy: b.Healthy()}
+		out[i] = Status{Name: b.Name, URL: b.URL.String(), Models: b.Models, Healthy: b.Healthy()}
 	}
 	return out
 }

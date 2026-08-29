@@ -92,12 +92,13 @@ which of the two instances handled it:
 Run it a few more times and kill one `ollama serve` process — the next
 request fails over to the survivor instead of erroring. `/metrics` serves
 Prometheus metrics, `/healthz` is a liveness probe, `/v1/backends`
-reports each backend's name and current health, and `/docs` serves a full
-documentation page straight from the running binary:
+reports each backend's name, models, and current health, `/v1/config`
+reports the model aliases and which features are enabled, and `/docs`
+serves a full documentation page straight from the running binary:
 
 ```sh
 curl localhost:8081/v1/backends
-# [{"name":"ollama-1","url":"http://localhost:11434","healthy":true}, ...]
+# [{"name":"ollama-1","url":"http://localhost:11434","models":["llama3"],"healthy":true}, ...]
 ```
 
 Or skip the local Go/Ollama install and run everything in containers:

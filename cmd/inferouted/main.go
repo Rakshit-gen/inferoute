@@ -89,6 +89,22 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(h.CurrentPool().Snapshot())
 	})
+	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"model_aliases":         h.Aliases(),
+			"health_check_interval": cfg.HealthCheckInterval.String(),
+			"rate_limit": map[string]any{
+				"enabled":             cfg.RateLimit.Enabled,
+				"requests_per_second": cfg.RateLimit.RequestsPerSecond,
+				"burst":               cfg.RateLimit.Burst,
+			},
+			"cache": map[string]any{
+				"enabled":      cfg.Cache.Enabled,
+				"max_distance": cfg.Cache.MaxDistance,
+			},
+		})
+	})
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {

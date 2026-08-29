@@ -53,6 +53,10 @@ func (h *Handler) CurrentPool() *backend.Pool { return h.pool.Load() }
 // SetAliases atomically swaps the requested-model -> served-model map.
 func (h *Handler) SetAliases(aliases map[string]string) { h.aliases.Store(&aliases) }
 
+// Aliases returns the current requested-model -> served-model map, for
+// introspection.
+func (h *Handler) Aliases() map[string]string { return *h.aliases.Load() }
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	body, err := io.ReadAll(r.Body)
