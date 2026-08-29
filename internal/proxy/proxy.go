@@ -100,6 +100,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.CacheLookups.WithLabelValues("hit").Inc()
 			w.Header().Set("Content-Type", ct)
 			w.Header().Set("X-Inferoute-Cache", "hit")
+			w.Header().Set("X-Inferoute-Backend", "cache")
 			w.Write(cached)
 			metrics.RequestsTotal.WithLabelValues(model, "cache", "200").Inc()
 			return
@@ -183,6 +184,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 			w.Header().Add(k, v)
 		}
 	}
+	// Tell the caller which backend actually served this — the playground
+	// and dashboard surface it, and it pairs with X-Inferoute-Cache.
+	w.Header().Set("X-Inferoute-Backend", b.Name)
 	w.WriteHeader(resp.StatusCode)
 
 	flusher, canFlush := w.(http.Flusher)

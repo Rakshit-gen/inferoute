@@ -40,6 +40,9 @@ func TestServeHTTPRoutesToCorrectBackend(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "hi from good") {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
+	if got := rec.Header().Get("X-Inferoute-Backend"); got != "good" {
+		t.Fatalf("X-Inferoute-Backend = %q, want %q", got, "good")
+	}
 }
 
 func TestServeHTTPFailsOverToHealthyBackend(t *testing.T) {
