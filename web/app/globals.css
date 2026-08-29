@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --void: #0b0f0e;
+  --panel: #141a18;
+  --panel-2: #1c2320;
+  --line: #2a332f;
+  --ink: #e8edea;
+  --ink-dim: #8a9691;
+  --route: #c6f24e;
+  --cache: #9b8cff;
+  --alert: #ff5c4d;
+  --warn: #f5c518;
+}
+
+html,
+body {
+  background: var(--void);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .panel {
+    @apply rounded border border-line bg-panel;
+  }
+  .eyebrow {
+    font-family: var(--font-display), monospace;
+    @apply text-[0.68rem] uppercase tracking-[0.22em] text-ink-dim;
+  }
+  .mono-num {
+    font-family: var(--font-mono), monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .led {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
+  }
+  .wire {
+    background-image: linear-gradient(
+      to right,
+      var(--line) 0 6px,
+      transparent 6px 12px
+    );
+    background-size: 12px 100%;
+  }
+}
+
+/* The signature dispatch strip: a request travelling left to right. */
+.dispatch-pip {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  width: 8px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: var(--route);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--route) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-led-pulse,
+  .animate-pip,
+  .dispatch-pip {
+    animation: none !important;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--route) 35%, transparent);
+}
+
+/* Thin scrollbars in the graphite theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
