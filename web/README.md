@@ -5,7 +5,7 @@ A static multi-page site for a running [inferoute](../) gateway. It talks to
 
 - **/** — landing: what inferoute does, the dispatch path, quickstart.
 - **/dashboard** — the dispatch path (ingress → rate limit → cache →
-  round-robin → backend), live backend health, throughput / latency / error /
+  load balancer → backend), live backend health, throughput / latency / error /
   cache-hit tiles, status-code breakdown, and the model routing table. Polls
   `/v1/backends`, `/v1/config`, and `/metrics`.
 - **/playground** — send one completion through the gateway and see which

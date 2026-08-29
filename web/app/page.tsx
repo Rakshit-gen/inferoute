@@ -27,7 +27,7 @@ const flow = [
     n: '04',
     k: 'route',
     title: 'Route + failover',
-    body: 'On a miss, inferoute round-robins across the healthy backends registered for that model. A connection error or 5xx moves to the next one; health checks keep the pool current.',
+    body: 'On a miss, inferoute load-balances across the healthy backends registered for that model (round-robin, least-pending, or weighted). A connection error or 5xx moves to the next one; health checks keep the pool current.',
   },
   {
     n: '05',

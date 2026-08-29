@@ -81,8 +81,8 @@ const concepts: [string, React.ReactNode][] = [
     'Choosing which backend handles a given request. inferoute looks at the model, filters to the backends that serve it and are currently healthy, and picks one.',
   ],
   [
-    'Round-robin',
-    'The selection rule: requests for the same model are spread evenly across that model\'s healthy backends, one after another, so no single server takes all the load.',
+    'Load balancing',
+    'The rule for picking among a model\'s healthy backends, set by "load_balancing" in the config. round_robin (default) spreads requests evenly, one after another. least_pending sends each request to the backend with the fewest in-flight right now. weighted picks at random, biased by each backend\'s "weight".',
   ],
   [
     'Failover',
@@ -114,7 +114,11 @@ const configFields: [string, React.ReactNode][] = [
   ],
   [
     'backends (required)',
-    'The list of servers to route to. Each entry is { name, url, models, path_prefix?, api_key? }. "models" is the list of model names that server can handle; two backends listing the same model get load-balanced between. "path_prefix" is prepended to the forwarded path for servers that mount their API under a prefix (Groq serves its OpenAI-compatible API under "/openai", so path_prefix ":/openai" turns "/v1/chat/completions" into "/openai/v1/chat/completions"). "api_key" is sent as that backend\'s Authorization header, overriding whatever the caller sent, so you can put a paid provider behind inferoute without callers knowing the key.',
+    'The list of servers to route to. Each entry is { name, url, models, path_prefix?, api_key?, weight? }. "models" is the list of model names that server can handle; two backends listing the same model get load-balanced between. "path_prefix" is prepended to the forwarded path for servers that mount their API under a prefix (Groq serves its OpenAI-compatible API under "/openai", so path_prefix ":/openai" turns "/v1/chat/completions" into "/openai/v1/chat/completions"). "api_key" is sent as that backend\'s Authorization header, overriding whatever the caller sent, so you can put a paid provider behind inferoute without callers knowing the key. "weight" (default 1) biases the "weighted" load-balancing strategy toward bigger boxes.',
+  ],
+  [
+    'load_balancing',
+    'How to pick among a model\'s healthy backends: "round_robin" (default, even rotation), "least_pending" (fewest in-flight requests, best when request durations vary), or "weighted" (random, biased by each backend\'s "weight").',
   ],
   ['rate_limit.enabled', 'Turn per-key rate limiting on or off. Off by default.'],
   [
@@ -285,7 +289,7 @@ export default function Docs() {
           ],
           [
             'Pick a backend',
-            'On a cache miss, inferoute takes the healthy backends that serve this model and picks the next one in round-robin order. If none are healthy or none serve the model, the caller gets HTTP 503.',
+            'On a cache miss, inferoute takes the healthy backends that serve this model and picks one using the configured "load_balancing" strategy (round_robin by default). If none are healthy or none serve the model, the caller gets HTTP 503.',
           ],
           [
             'Forward and, if needed, fail over',
@@ -371,9 +375,10 @@ inferouted -config config.example.json`}</Pre>
   "listen_addr": ":8081",
   "health_check_path": "/",
   "health_check_interval": "10s",
+  "load_balancing": "round_robin",
   "backends": [
-    { "name": "ollama-1", "url": "http://localhost:11434", "models": ["llama3"] },
-    { "name": "ollama-2", "url": "http://localhost:11435", "models": ["llama3"] }
+    { "name": "ollama-1", "url": "http://localhost:11434", "models": ["llama3"], "weight": 1 },
+    { "name": "ollama-2", "url": "http://localhost:11435", "models": ["llama3"], "weight": 1 }
   ],
   "rate_limit": { "enabled": false, "requests_per_second": 5, "burst": 10, "redis_addr": "" },
   "cache": {
@@ -408,9 +413,9 @@ inferouted -config config.example.json`}</Pre>
       <H2 id="reload">Changing config without downtime</H2>
       <P>
         Sending the process a <Code>SIGHUP</Code> reloads the <Code>backends</Code>,{' '}
-        <Code>model_aliases</Code>, and <Code>api_keys</Code> sections from the same file, with no
-        restart and no dropped in-flight requests. This is how you add or drain a backend in
-        production.
+        <Code>load_balancing</Code>, <Code>model_aliases</Code>, and <Code>api_keys</Code> sections
+        from the same file, with no restart and no dropped in-flight requests. This is how you add or
+        drain a backend, or switch strategy, in production.
       </P>
       <Pre>{`kill -HUP $(pgrep inferouted)`}</Pre>
       <P>
@@ -578,7 +583,7 @@ inferouted -config config.example.json`}</Pre>
       <H2 id="limits">Current limitations</H2>
       <P>Things inferoute does not do yet, so you can plan around them:</P>
       <ul className="mt-3 space-y-2 text-sm text-ink-dim">
-        <li>Routing is round-robin only. No weighting by capacity, and no least-latency choice.</li>
+        <li>Load balancing is round_robin, least_pending, or weighted. There is no true latency-aware routing (least_pending approximates it by in-flight count).</li>
         <li>
           A backend is either healthy or not. There is no circuit breaker for a server that is up but
           flaky.
