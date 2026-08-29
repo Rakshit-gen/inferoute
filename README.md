@@ -176,6 +176,7 @@ one). Plain-English rundown of each section:
 | `cache.max_distance` | How close a cached prompt has to be to count as a hit — see the note below, the naming here is easy to get backwards. |
 | `cache.tenant_id` | The NuclaDB tenant inferoute's cache vectors are stored under. |
 | `model_aliases` | Maps a requested model name to the one your backends actually serve, e.g. `{"gpt-4": "llama3"}` routes `gpt-4` requests to whatever backend lists `llama3`. Empty by default (no aliasing). |
+| `cors_origins` | Browser origins allowed to call the HTTP API (the `web/` dashboard, and the playground's `POST /v1/chat/completions`). A single `["*"]` allows any origin; otherwise list each exactly. Defaults to `["*"]`. Non-browser clients send no `Origin` and are unaffected. |
 
 Every field has a sane default except `backends`, which is required.
 

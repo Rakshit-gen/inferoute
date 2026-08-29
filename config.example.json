@@ -28,5 +28,6 @@
     "max_distance": 0.05,
     "tenant_id": "inferoute-cache"
   },
-  "model_aliases": {}
+  "model_aliases": {},
+  "cors_origins": ["*"]
 }

@@ -53,6 +53,10 @@ type Config struct {
 	// actually serve, e.g. {"gpt-4": "llama3"} routes gpt-4 requests to
 	// whatever backend lists "llama3".
 	ModelAliases map[string]string `json:"model_aliases"`
+	// CORSOrigins is the list of browser origins allowed to call the HTTP
+	// API (the dashboard at web/, plus the playground's POST). A single "*"
+	// entry allows any origin. Defaults to ["*"].
+	CORSOrigins []string `json:"cors_origins"`
 }
 
 func Load(path string) (*Config, error) {
@@ -69,6 +73,7 @@ func Load(path string) (*Config, error) {
 		RateLimit           RateLimit         `json:"rate_limit"`
 		Cache               Cache             `json:"cache"`
 		ModelAliases        map[string]string `json:"model_aliases"`
+		CORSOrigins         []string          `json:"cors_origins"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
@@ -81,9 +86,13 @@ func Load(path string) (*Config, error) {
 		RateLimit:       raw.RateLimit,
 		Cache:           raw.Cache,
 		ModelAliases:    raw.ModelAliases,
+		CORSOrigins:     raw.CORSOrigins,
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"
+	}
+	if len(cfg.CORSOrigins) == 0 {
+		cfg.CORSOrigins = []string{"*"}
 	}
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"

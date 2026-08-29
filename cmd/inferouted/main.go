@@ -96,7 +96,7 @@ func main() {
 		_, _ = w.Write(site.Index)
 	})
 
-	srv := &http.Server{Addr: cfg.ListenAddr, Handler: mux}
+	srv := &http.Server{Addr: cfg.ListenAddr, Handler: withCORS(mux, cfg.CORSOrigins)}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -133,4 +133,34 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("inferouted: %v", err)
 	}
+}
+
+// withCORS lets browser dashboards on other origins call the read-only
+// endpoints and the playground POST /v1/chat/completions. A "*" entry in
+// allowed permits any origin; otherwise the request's Origin must be listed
+// exactly. Non-browser clients (curl, SDKs) send no Origin and are
+// unaffected.
+func withCORS(h http.Handler, allowed []string) http.Handler {
+	allowAny := false
+	set := make(map[string]bool, len(allowed))
+	for _, o := range allowed {
+		if o == "*" {
+			allowAny = true
+		}
+		set[o] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && (allowAny || set[origin]) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Inferoute-Cache, X-Inferoute-Backend")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
