@@ -15,7 +15,6 @@ export function POST(req: NextRequest) {
       body: payload,
       cache: 'no-store',
     })
-    const body = await upstream.text()
     const headers = new Headers({
       'content-type': upstream.headers.get('content-type') ?? 'application/json',
     })
@@ -23,6 +22,8 @@ export function POST(req: NextRequest) {
       const v = upstream.headers.get(h)
       if (v) headers.set(h, v)
     }
-    return new NextResponse(body, { status: upstream.status, headers })
+    // Pass the body straight through so a streamed (SSE) completion reaches
+    // the browser token by token instead of being buffered here.
+    return new NextResponse(upstream.body, { status: upstream.status, headers })
   })
 }

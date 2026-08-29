@@ -46,28 +46,100 @@ export interface ChatResult {
   servedBy: string | null
   cacheHit: boolean
   latencyMs: number
+  ttfbMs: number | null
+  streamed: boolean
   body: string
+  /** Assistant text, assembled from streamed deltas or the final JSON. */
+  content: string | null
+}
+
+interface SendChatOpts {
+  stream?: boolean
+  signal?: AbortSignal
+  /** Called with the running assistant text as streamed deltas arrive. */
+  onProgress?: (content: string) => void
+}
+
+function contentFromJSON(body: string): string | null {
+  try {
+    const j = JSON.parse(body)
+    return j.message?.content ?? j.choices?.[0]?.message?.content ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Sends one completion through the tenant's gateway and reports the routing. */
 export async function sendChat(
   model: string,
   prompt: string,
-  signal?: AbortSignal,
+  opts: SendChatOpts = {},
 ): Promise<ChatResult> {
+  const { stream = false, signal, onProgress } = opts
   const started = performance.now()
   const res = await fetch('/api/gateway/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model, stream, messages: [{ role: 'user', content: prompt }] }),
     signal,
   })
-  const body = await res.text()
-  return {
+
+  const meta = {
     status: res.status,
     servedBy: res.headers.get('X-Inferoute-Backend'),
     cacheHit: res.headers.get('X-Inferoute-Cache') === 'hit',
+  }
+  const isSSE = (res.headers.get('content-type') ?? '').includes('text/event-stream')
+
+  if (!isSSE || !res.body) {
+    const body = await res.text()
+    return {
+      ...meta,
+      latencyMs: performance.now() - started,
+      ttfbMs: null,
+      streamed: false,
+      body,
+      content: contentFromJSON(body),
+    }
+  }
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let raw = ''
+  let content = ''
+  let ttfbMs: number | null = null
+  let buffer = ''
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (ttfbMs === null) ttfbMs = performance.now() - started
+    raw += value
+    buffer += value
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data:')) continue
+      const data = trimmed.slice(5).trim()
+      if (data === '[DONE]') continue
+      try {
+        const delta = JSON.parse(data).choices?.[0]?.delta?.content
+        if (delta) {
+          content += delta
+          onProgress?.(content)
+        }
+      } catch {
+        /* ignore keep-alives and partial frames */
+      }
+    }
+  }
+
+  return {
+    ...meta,
     latencyMs: performance.now() - started,
-    body,
+    ttfbMs,
+    streamed: true,
+    body: raw,
+    content: content || null,
   }
 }
