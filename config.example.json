@@ -28,6 +28,7 @@
     "max_distance": 0.05,
     "tenant_id": "inferoute-cache"
   },
+  "load_balancing": "round_robin",
   "model_aliases": {},
   "cors_origins": ["*"],
   "api_keys": []

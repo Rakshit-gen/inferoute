@@ -36,7 +36,7 @@ func main() {
 		log.Fatalf("inferouted: %v", err)
 	}
 
-	pool, err := backend.NewPool(cfg.Backends)
+	pool, err := backend.NewPool(cfg.Backends, cfg.LoadBalancing)
 	if err != nil {
 		log.Fatalf("inferouted: %v", err)
 	}
@@ -103,6 +103,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"model_aliases":         h.Aliases(),
+			"load_balancing":        cfg.LoadBalancing,
 			"health_check_interval": cfg.HealthCheckInterval.String(),
 			"rate_limit": map[string]any{
 				"enabled":             cfg.RateLimit.Enabled,
@@ -168,7 +169,7 @@ func main() {
 				log.Printf("inferouted: reload: %v (keeping current config)", err)
 				continue
 			}
-			newPool, err := backend.NewPool(newCfg.Backends)
+			newPool, err := backend.NewPool(newCfg.Backends, newCfg.LoadBalancing)
 			if err != nil {
 				log.Printf("inferouted: reload: %v (keeping current config)", err)
 				continue

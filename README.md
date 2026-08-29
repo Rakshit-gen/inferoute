@@ -179,7 +179,8 @@ one). Plain-English rundown of each section:
 |---|---|
 | `listen_addr` | The address inferoute itself listens on, e.g. `:8081`. |
 | `health_check_path`, `health_check_interval` | Which path to `GET` on each backend to check it's alive, and how often. |
-| `backends` | The list of servers to route to. Each entry is `{name, url, models, path_prefix, api_key}` — `models` is the list of model names that backend can serve (two backends listing the same model get load-balanced between); `path_prefix` is prepended to the client's request path for backends that mount their API under a path (e.g. Groq's OpenAI-compatible endpoint lives under `/openai`, so `path_prefix: "/openai"` turns a client's `/v1/chat/completions` into `/openai/v1/chat/completions`); `api_key`, if set, is sent as that backend's `Authorization: Bearer` header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know. Both are optional and empty by default. |
+| `backends` | The list of servers to route to. Each entry is `{name, url, models, path_prefix, api_key, weight}` — `models` is the list of model names that backend can serve (two backends listing the same model get load-balanced between); `path_prefix` is prepended to the client's request path for backends that mount their API under a path (e.g. Groq's OpenAI-compatible endpoint lives under `/openai`, so `path_prefix: "/openai"` turns a client's `/v1/chat/completions` into `/openai/v1/chat/completions`); `api_key`, if set, is sent as that backend's `Authorization: Bearer` header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know; `weight` biases the `weighted` load-balancing strategy toward beefier backends (default 1, ignored by the other strategies). All optional. |
+| `load_balancing` | How to pick a backend among the healthy ones for a model: `round_robin` (default, even rotation), `least_pending` (fewest in-flight requests: best when request durations vary a lot), or `weighted` (random, biased by each backend's `weight`). |
 | `rate_limit.enabled` | Turn per-API-key rate limiting on or off. Off by default. |
 | `rate_limit.requests_per_second`, `.burst` | Steady-state rate and how many requests can burst above it before a caller starts getting `429`s. |
 | `rate_limit.redis_addr` | Leave empty for a per-instance limiter (fine for one gateway). Set to a `host:port` to share limit state across a fleet of inferoute instances via Redis instead. |
@@ -197,8 +198,9 @@ Every field has a sane default except `backends`, which is required.
 ## Features
 
 - **Routing + failover**: reads `model` from the request body (resolved
-  through `model_aliases` first, if configured), round-robins across
-  healthy backends registered for it, retries the next one on a connection
+  through `model_aliases` first, if configured), load-balances across
+  healthy backends registered for it (`load_balancing`: `round_robin`,
+  `least_pending`, or `weighted`), retries the next one on a connection
   error or 5xx.
 - **Streaming**: SSE responses are flushed to the client chunk-by-chunk as
   the backend produces them, not buffered.
@@ -290,8 +292,8 @@ on a hit — with real cache-hit/cache-miss behavior confirmed against a live
 NuclaDB instance and real Redis, not fakes.
 
 Not yet built: batched/async cache writes at scale, cache eviction/TTL (a
-long-running gateway's cache tenant grows forever), weighted or
-least-latency routing (round-robin only), a circuit breaker for flaky (as
+long-running gateway's cache tenant grows forever), true latency-aware
+routing (`least_pending` approximates it), a circuit breaker for flaky (as
 opposed to fully down) backends, and TLS termination (put it behind a
 reverse proxy for that today).
 

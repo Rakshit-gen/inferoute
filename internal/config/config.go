@@ -22,6 +22,9 @@ type Backend struct {
 	// a credential the caller shouldn't have to know (e.g. gatewaying a
 	// hosted provider behind a gateway that itself holds the key).
 	APIKey string `json:"api_key"`
+	// Weight biases the "weighted" load-balancing strategy toward beefier
+	// backends. Ignored by the other strategies. Missing or <=0 means 1.
+	Weight int `json:"weight"`
 }
 
 type RateLimit struct {
@@ -49,6 +52,11 @@ type Config struct {
 	Backends            []Backend     `json:"backends"`
 	RateLimit           RateLimit     `json:"rate_limit"`
 	Cache               Cache         `json:"cache"`
+	// LoadBalancing picks which backend serves each request among the
+	// healthy ones for a model: "round_robin" (default, even rotation),
+	// "least_pending" (fewest in-flight requests), or "weighted" (random,
+	// biased by each backend's Weight).
+	LoadBalancing string `json:"load_balancing"`
 	// ModelAliases maps a requested model name to the model name backends
 	// actually serve, e.g. {"gpt-4": "llama3"} routes gpt-4 requests to
 	// whatever backend lists "llama3".
@@ -80,6 +88,7 @@ func Load(path string) (*Config, error) {
 		ModelAliases        map[string]string `json:"model_aliases"`
 		CORSOrigins         []string          `json:"cors_origins"`
 		APIKeys             []string          `json:"api_keys"`
+		LoadBalancing       string            `json:"load_balancing"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
@@ -94,6 +103,15 @@ func Load(path string) (*Config, error) {
 		ModelAliases:    raw.ModelAliases,
 		CORSOrigins:     raw.CORSOrigins,
 		APIKeys:         raw.APIKeys,
+		LoadBalancing:   raw.LoadBalancing,
+	}
+	if cfg.LoadBalancing == "" {
+		cfg.LoadBalancing = "round_robin"
+	}
+	switch cfg.LoadBalancing {
+	case "round_robin", "least_pending", "weighted":
+	default:
+		return nil, fmt.Errorf("config %s: unknown load_balancing %q (want round_robin, least_pending, or weighted)", path, cfg.LoadBalancing)
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"

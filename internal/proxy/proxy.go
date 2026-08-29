@@ -117,7 +117,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		b, err := pool.Next(model)
+		b, release, err := pool.Next(model)
 		if err != nil {
 			metrics.RequestsTotal.WithLabelValues(model, "none", "503").Inc()
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -125,6 +125,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		ok, status, captured, contentType := h.forward(w, r, b, body, cacheable)
+		release()
 		if ok {
 			metrics.RequestsTotal.WithLabelValues(model, b.Name, strconv.Itoa(status)).Inc()
 			if cacheable && status == http.StatusOK && len(captured) > 0 {
