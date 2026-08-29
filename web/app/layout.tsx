@@ -28,6 +28,8 @@ const clerkAppearance = {
   },
   elements: {
     formButtonPrimary: 'text-void font-semibold',
+    socialButtonsBlockButton: 'text-ink',
+    socialButtonsBlockButtonText: 'text-ink',
     card: 'border border-line',
   },
 }
