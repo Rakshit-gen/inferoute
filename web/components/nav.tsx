@@ -88,10 +88,10 @@ export function Nav() {
             GitHub ↗
           </a>
           <SignedOut>
-            <SignInButton mode="modal">
+            <SignInButton mode="modal" forceRedirectUrl="/dashboard">
               <button className="rounded px-2.5 py-1 text-sm text-ink-dim hover:text-ink">Sign in</button>
             </SignInButton>
-            <SignUpButton mode="modal">
+            <SignUpButton mode="modal" forceRedirectUrl="/dashboard">
               <button className="rounded bg-route px-3 py-1.5 font-display text-sm font-semibold text-void">
                 Sign up
               </button>

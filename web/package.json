@@ -8,7 +8,7 @@
     "start": "next start -p 3002",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "check": "tsx lib/metrics.check.ts"
+    "check": "tsx lib/metrics.check.ts && tsx lib/sim.check.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.39.6",
