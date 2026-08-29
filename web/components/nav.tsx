@@ -12,6 +12,7 @@ const links = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/playground', label: 'Playground' },
   { href: '/connections', label: 'Connections' },
+  { href: '/settings', label: 'Settings' },
   { href: '/docs', label: 'Docs' },
 ]
 

@@ -158,6 +158,10 @@ const endpoints: [string, React.ReactNode][] = [
     'POST /v1/chat/completions',
     'The proxy itself. Reads "model" from the JSON body, resolves aliases, checks the cache when enabled, picks a healthy backend, and streams the response straight back. Returns 400 if the body is not JSON with a "model" field, 429 if rate limited, 401 if an API key is required and missing, 503 if no backend serves that model, 502 if every attempt failed.',
   ],
+  [
+    'GET /v1/models',
+    'An OpenAI-compatible model list: every model a backend serves plus every alias clients can ask for. SDKs call this to fill a model picker. Not gated by api_keys.',
+  ],
   ['GET /v1/backends', 'A JSON array of every backend with its name, url, models, and current health.'],
   [
     'GET /v1/config',
@@ -329,6 +333,11 @@ inferouted -config config.example.json`}</Pre>
       <P>
         Or build from source with <Code>go build -o bin/inferouted ./cmd/inferouted</Code>. The
         binary takes exactly one flag, <Code>-config</Code>, and defaults to <Code>./config.json</Code>.
+      </P>
+      <P>
+        No GPUs to hand? <Code>./scripts/local-stack.sh</Code> in the repo builds and runs the
+        gateway in front of two mock backends that echo prompts back (and can stream), so you can
+        try routing, failover, and this dashboard with only Go installed.
       </P>
 
       <H3>3. Send a request</H3>

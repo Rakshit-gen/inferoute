@@ -9,6 +9,19 @@ export interface PublicConnection {
   hasApiKey: boolean
 }
 
+export interface ProbeResult {
+  reachable: boolean
+  authOk?: boolean
+  status?: number
+  latencyMs?: number
+  error?: string
+  config?: {
+    api_keys_required?: boolean
+    rate_limit?: { enabled: boolean }
+    cache?: { enabled: boolean }
+  } | null
+}
+
 interface ConnectionsResponse {
   connections: PublicConnection[]
   activeConnectionId: string | null
@@ -17,7 +30,7 @@ interface ConnectionsResponse {
 async function jsonFetch(url: string, init?: RequestInit) {
   const res = await fetch(url, init)
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body.error || `${url} → ${res.status}`)
+  if (!res.ok) throw new Error(body.error || `${url} -> ${res.status}`)
   return body
 }
 
@@ -31,7 +44,7 @@ export function useConnections() {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['connections'] })
-    // active connection changed → every gateway-backed view is now stale
+    // active connection changed -> every gateway-backed view is now stale
     qc.invalidateQueries({ queryKey: ['backends'] })
     qc.invalidateQueries({ queryKey: ['config'] })
     qc.invalidateQueries({ queryKey: ['metrics'] })
@@ -47,19 +60,46 @@ export function useConnections() {
     onSuccess: invalidate,
   })
 
+  const update = useMutation({
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string
+      name?: string
+      url?: string
+      apiKey?: string | null
+    }) =>
+      jsonFetch(`/api/connections/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: invalidate,
+  })
+
   const remove = useMutation({
     mutationFn: (id: string) => jsonFetch(`/api/connections/${id}`, { method: 'DELETE' }),
     onSuccess: invalidate,
   })
 
   const setActive = useMutation({
-    mutationFn: (id: string) => jsonFetch(`/api/connections/${id}`, { method: 'PATCH' }),
+    mutationFn: (id: string) =>
+      jsonFetch(`/api/connections/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      }),
     onSuccess: invalidate,
+  })
+
+  const test = useMutation<ProbeResult, Error, string>({
+    mutationFn: (id: string) => jsonFetch(`/api/connections/${id}/test`),
   })
 
   const connections = query.data?.connections ?? []
   const activeConnectionId = query.data?.activeConnectionId ?? null
   const active = connections.find((c) => c.id === activeConnectionId) ?? null
 
-  return { ...query, connections, activeConnectionId, active, add, remove, setActive }
+  return { ...query, connections, activeConnectionId, active, add, update, remove, setActive, test }
 }

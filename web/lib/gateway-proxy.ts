@@ -1,7 +1,9 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { activeConnection, AuthError, type Connection } from './tenant-store'
+import { activeConnection, authFor, AuthError, type Connection } from './tenant-store'
+
+export { authFor as authHeaders }
 
 const json = (status: number, body: unknown) => NextResponse.json(body, { status })
 
@@ -26,14 +28,10 @@ export async function withGateway(
   }
 }
 
-export function authHeaders(conn: Connection): HeadersInit {
-  return conn.apiKey ? { Authorization: `Bearer ${conn.apiKey}` } : {}
-}
-
 /** Proxies a GET to the connection's gateway, passing the body + status through. */
 export async function proxyGet(conn: Connection, path: string): Promise<Response> {
   const upstream = await fetch(`${conn.url}${path}`, {
-    headers: authHeaders(conn),
+    headers: authFor(conn),
     cache: 'no-store',
   })
   const body = await upstream.text()

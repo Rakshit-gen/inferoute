@@ -71,6 +71,26 @@ export async function addConnection(input: {
   return conn
 }
 
+export async function updateConnection(
+  id: string,
+  patch: { name?: string; url?: string; apiKey?: string | null },
+): Promise<Connection> {
+  const data = await loadTenant()
+  const conn = data.connections.find((c) => c.id === id)
+  if (!conn) throw new Error('unknown connection')
+  if (patch.name !== undefined) conn.name = patch.name.trim() || conn.name
+  if (patch.url !== undefined) {
+    const url = patch.url.trim().replace(/\/$/, '')
+    if (!/^https?:\/\//.test(url)) throw new Error('url must start with http:// or https://')
+    conn.url = url
+  }
+  // null clears the key; undefined leaves it; a string sets it
+  if (patch.apiKey === null) conn.apiKey = undefined
+  else if (typeof patch.apiKey === 'string' && patch.apiKey.trim()) conn.apiKey = patch.apiKey.trim()
+  await saveTenant(data)
+  return conn
+}
+
 export async function removeConnection(id: string): Promise<void> {
   const data = await loadTenant()
   data.connections = data.connections.filter((c) => c.id !== id)
@@ -83,6 +103,12 @@ export async function setActiveConnection(id: string): Promise<void> {
   if (!data.connections.some((c) => c.id === id)) throw new Error('unknown connection')
   data.activeConnectionId = id
   await saveTenant(data)
+}
+
+/** One of the caller's own connections by id, or null. Never another tenant's. */
+export async function getConnection(id: string): Promise<Connection | null> {
+  const data = await loadTenant()
+  return data.connections.find((c) => c.id === id) ?? null
 }
 
 /**
@@ -102,4 +128,9 @@ export async function activeConnection(explicitId?: string | null): Promise<Conn
 /** Strips the secret before anything reaches the client. */
 export function publicConnection(c: Connection) {
   return { id: c.id, name: c.name, url: c.url, hasApiKey: Boolean(c.apiKey) }
+}
+
+/** The Authorization header to send to this connection's gateway, if any. */
+export function authFor(c: Connection): HeadersInit {
+  return c.apiKey ? { Authorization: `Bearer ${c.apiKey}` } : {}
 }
