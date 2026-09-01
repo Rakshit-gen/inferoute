@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { DispatchSim } from '@/components/dispatch-sim'
+import { Reveal } from '@/components/reveal'
 import { Logo } from '@/components/logo'
 
 const GITHUB = 'https://github.com/Rakshit-gen/inferoute'
@@ -109,28 +110,39 @@ export default function Landing() {
   return (
     <div className="space-y-20">
       <section className="pt-8">
-        <Logo className="h-11 w-11 text-ink" />
-        <p className="eyebrow mt-5">OpenAI-compatible inference gateway</p>
-        <h1 className="mt-3 font-display text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl">
+        <Logo className="rise h-11 w-11 text-ink" />
+        <p className="eyebrow rise mt-5" style={{ '--d': '0.06s' } as React.CSSProperties}>
+          OpenAI-compatible inference gateway
+        </p>
+        <h1
+          className="rise mt-3 font-display text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl"
+          style={{ '--d': '0.12s' } as React.CSSProperties}
+        >
           Route, cache, and rate-limit
           <br />
-          <span className="text-route">your inference backends</span>
+          <span className="underline-draw relative inline-block text-route">your inference backends</span>
         </h1>
-        <p className="mt-4 max-w-xl text-ink-dim">
+        <p
+          className="rise mt-4 max-w-xl text-ink-dim"
+          style={{ '--d': '0.18s' } as React.CSSProperties}
+        >
           inferoute sits in front of your Ollama, vLLM, or hosted LLM endpoints and
           load-balances across them, health-checks them, fails over on error, and
           semantically caches responses. One binary, one JSON config.
         </p>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div
+          className="rise mt-6 flex flex-wrap gap-3"
+          style={{ '--d': '0.24s' } as React.CSSProperties}
+        >
           <Link
             href="/dashboard"
-            className="rounded bg-route px-4 py-2 font-display text-sm font-semibold text-void"
+            className="rounded bg-route px-4 py-2 font-display text-sm font-semibold text-void transition-transform hover:-translate-y-0.5"
           >
             Open dashboard
           </Link>
           <Link
             href="/docs"
-            className="rounded border border-line px-4 py-2 font-display text-sm font-semibold text-ink hover:border-ink-dim"
+            className="rounded border border-line px-4 py-2 font-display text-sm font-semibold text-ink transition-colors hover:border-ink-dim"
           >
             Read the docs
           </Link>
@@ -138,28 +150,32 @@ export default function Landing() {
             href={GITHUB}
             target="_blank"
             rel="noreferrer"
-            className="rounded border border-line px-4 py-2 font-display text-sm font-semibold text-ink-dim hover:border-ink-dim hover:text-ink"
+            className="rounded border border-line px-4 py-2 font-display text-sm font-semibold text-ink-dim transition-colors hover:border-ink-dim hover:text-ink"
           >
             GitHub ↗
           </a>
         </div>
       </section>
 
-      <section>
+      <Reveal>
         <DispatchSim />
         <p className="mt-2 text-xs text-ink-dim">
           Drive the load, toggle cache and the rate limit, knock backends offline. The
           pipeline responds the way the real gateway would.
         </p>
-      </section>
+      </Reveal>
 
-      <section>
+      <Reveal>
         <h2 className="eyebrow mb-6">what happens to a request</h2>
-        <ol className="space-y-4">
-          {flow.map((s) => (
-            <li key={s.n} className="flex gap-4">
-              <span className="mono-num shrink-0 text-sm text-ink-dim">{s.n}</span>
-              <div className="border-l border-line pl-4">
+        <ol className="space-y-1">
+          {flow.map((s, i) => (
+            <li
+              key={s.n}
+              className="r-item group flex gap-4 rounded px-2 py-2 transition-colors hover:bg-panel/50"
+              style={{ '--d': `${i * 0.06}s` } as React.CSSProperties}
+            >
+              <span className="mono-num shrink-0 pt-0.5 text-sm text-ink-dim">{s.n}</span>
+              <div className="border-l border-line pl-4 transition-colors group-hover:border-ink-dim">
                 <div className="flex items-center gap-2">
                   <span className="led" style={{ background: dot(s.k) }} />
                   <h3 className="font-display text-sm font-semibold">{s.title}</h3>
@@ -169,13 +185,17 @@ export default function Landing() {
             </li>
           ))}
         </ol>
-      </section>
+      </Reveal>
 
-      <section>
+      <Reveal>
         <h2 className="eyebrow mb-4">what it does</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {capabilities.map((c) => (
-            <div key={c.title} className="panel p-4">
+          {capabilities.map((c, i) => (
+            <div
+              key={c.title}
+              className="r-item panel p-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-ink-dim"
+              style={{ '--d': `${0.03 * i}s` } as React.CSSProperties}
+            >
               <div className="flex items-center gap-2">
                 <span className="led" style={{ background: dot(c.k) }} />
                 <h3 className="font-display text-sm font-semibold">{c.title}</h3>
@@ -184,23 +204,24 @@ export default function Landing() {
             </div>
           ))}
         </div>
-      </section>
+      </Reveal>
 
-      <section>
+      <Reveal>
         <h2 className="eyebrow mb-4">put it in front of anything that speaks the API</h2>
         <div className="flex flex-wrap gap-2">
-          {backends.map((b) => (
+          {backends.map((b, i) => (
             <span
               key={b}
-              className="rounded border border-line bg-panel px-2.5 py-1 font-mono text-xs text-ink-dim"
+              className="r-item rounded border border-line bg-panel px-2.5 py-1 font-mono text-xs text-ink-dim transition-colors hover:border-ink-dim hover:text-ink"
+              style={{ '--d': `${0.03 * i}s` } as React.CSSProperties}
             >
               {b}
             </span>
           ))}
         </div>
-      </section>
+      </Reveal>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <Reveal className="grid gap-6 lg:grid-cols-2">
         <div>
           <h2 className="eyebrow mb-4">config</h2>
           <pre className="panel overflow-x-auto p-4 font-mono text-xs leading-relaxed text-ink-dim">
@@ -239,19 +260,23 @@ curl localhost:8081/v1/chat/completions \\
             page to watch it live here.
           </p>
         </div>
-      </section>
+      </Reveal>
 
-      <section>
+      <Reveal>
         <h2 className="eyebrow mb-4">questions</h2>
         <dl className="grid gap-4 sm:grid-cols-2">
-          {faq.map((f) => (
-            <div key={f.q} className="panel p-4">
+          {faq.map((f, i) => (
+            <div
+              key={f.q}
+              className="r-item panel p-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-ink-dim"
+              style={{ '--d': `${0.04 * i}s` } as React.CSSProperties}
+            >
               <dt className="font-display text-sm font-semibold text-ink">{f.q}</dt>
               <dd className="mt-1.5 text-sm text-ink-dim">{f.a}</dd>
             </div>
           ))}
         </dl>
-      </section>
+      </Reveal>
 
       <footer className="border-t border-line pt-6 text-xs text-ink-dim">
         inferoute ·{' '}
