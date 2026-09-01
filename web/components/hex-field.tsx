@@ -22,7 +22,7 @@ interface Runner {
 }
 
 const R = 54 // hex circumradius, px
-const BASE_ALPHA = 0.11
+const BASE_ALPHA = 0.15
 const LIME = '#c6f24e'
 const VIOLET = '#9b8cff'
 
@@ -53,6 +53,7 @@ export function HexField() {
     let h = 0
     let raf = 0
     let last = performance.now()
+    const mouse = { x: -1e4, y: -1e4, on: 0 }
 
     const vkey = (x: number, y: number) => `${Math.round(x * 2)}:${Math.round(y * 2)}`
     const link = (k: string, e: Edge) => {
@@ -163,6 +164,27 @@ export function HexField() {
 
     function step(dt: number) {
       drawBase()
+
+      // the lattice lifts where the cursor is: re-stroke the grid brighter
+      // inside a soft disc, with a faint lime wash on top.
+      mouse.on = clamp01(mouse.on + (mouse.x > -1e3 ? dt * 3 : -dt * 2))
+      if (mouse.on > 0.01) {
+        const rad = 170
+        g.save()
+        g.beginPath()
+        g.arc(mouse.x, mouse.y, rad, 0, Math.PI * 2)
+        g.clip()
+        g.strokeStyle = `rgba(232, 237, 234, ${0.18 * mouse.on})`
+        g.lineWidth = 0.8
+        g.stroke(base)
+        const wash = g.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, rad)
+        wash.addColorStop(0, `rgba(198, 242, 78, ${0.07 * mouse.on})`)
+        wash.addColorStop(1, 'rgba(198, 242, 78, 0)')
+        g.fillStyle = wash
+        g.fillRect(mouse.x - rad, mouse.y - rad, rad * 2, rad * 2)
+        g.restore()
+      }
+
       g.globalCompositeOperation = 'lighter'
       g.lineCap = 'round'
 
@@ -209,12 +231,26 @@ export function HexField() {
       resizeTimer = window.setTimeout(resize, 150)
     }
     window.addEventListener('resize', onResize)
+    const onMove = (e: PointerEvent) => {
+      mouse.x = e.clientX
+      mouse.y = e.clientY
+    }
+    const onLeave = () => {
+      mouse.x = -1e4
+      mouse.y = -1e4
+    }
+    if (!reduce) {
+      window.addEventListener('pointermove', onMove, { passive: true })
+      document.addEventListener('pointerleave', onLeave)
+    }
     if (!reduce) raf = requestAnimationFrame(frame)
 
     return () => {
       cancelAnimationFrame(raf)
       window.clearTimeout(resizeTimer)
       window.removeEventListener('resize', onResize)
+      window.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerleave', onLeave)
     }
   }, [])
 
@@ -223,7 +259,7 @@ export function HexField() {
       ref={ref}
       aria-hidden="true"
       className="pointer-events-none fixed inset-0 -z-10"
-      style={{ opacity: 0.5 }}
+      style={{ opacity: 0.7 }}
     />
   )
 }
