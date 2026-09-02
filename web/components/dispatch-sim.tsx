@@ -197,8 +197,9 @@ export function DispatchSim() {
         <Stat label="p50" value={stats.p50 == null ? '—' : ms(stats.p50)} />
       </div>
 
-      {/* the pipe */}
-      <div className="relative mx-4 my-8 h-28">
+      {/* the pipe — scrolls sideways on narrow screens so the stages keep room */}
+      <div className="overflow-x-auto px-4">
+      <div className="relative my-8 h-28 min-w-[500px]">
         <canvas ref={pipe} className="absolute inset-0 h-full w-full" aria-hidden />
 
         {STAGE_X.map((x, i) => {
@@ -226,6 +227,7 @@ export function DispatchSim() {
             animation paused (reduced motion)
           </p>
         )}
+      </div>
       </div>
 
       {/* controls */}
