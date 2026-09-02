@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <HexField />
           <Providers>
             <Nav />
-            <main className="relative z-10 mx-auto max-w-6xl px-4 pb-24 pt-6">{children}</main>
+            <main className="relative z-10 mx-auto max-w-6xl px-4 pb-20 pt-6 sm:px-6">{children}</main>
           </Providers>
         </ClerkProvider>
       </body>

@@ -87,7 +87,7 @@ export function DispatchTrace({
 }) {
   const ok = status >= 200 && status < 300
   return (
-    <div className="flex flex-wrap items-stretch gap-y-2">
+    <div className="flex items-stretch overflow-x-auto pb-1">
       <Node label="ingress" sub={`HTTP ${status}`} tone={ok ? 'idle' : 'dim'} />
       <Wire active={ok} />
       {cacheHit ? (
