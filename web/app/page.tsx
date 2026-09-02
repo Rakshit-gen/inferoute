@@ -108,18 +108,18 @@ function dot(k: string) {
 
 export default function Landing() {
   return (
-    <div className="space-y-20">
-      <section className="pt-8">
-        <Logo className="rise h-11 w-11 text-ink" />
+    <div className="space-y-14 sm:space-y-20">
+      <section className="pt-6 sm:pt-8">
+        <Logo className="rise h-10 w-10 text-ink sm:h-11 sm:w-11" />
         <p className="eyebrow rise mt-5" style={{ '--d': '0.06s' } as React.CSSProperties}>
           OpenAI-compatible inference gateway
         </p>
         <h1
-          className="rise mt-3 font-display text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl"
+          className="rise mt-3 font-display text-[1.7rem] font-bold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.1]"
           style={{ '--d': '0.12s' } as React.CSSProperties}
         >
           Route, cache, and rate-limit
-          <br />
+          <br className="hidden sm:inline" />{' '}
           <span className="underline-draw relative inline-block text-route">your inference backends</span>
         </h1>
         <p
