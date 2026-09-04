@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -18,31 +19,60 @@ type Allower interface {
 	Allow(key string) bool
 }
 
+// idleEvictAfter is how long a key's limiter survives with no traffic
+// before the sweep reclaims it, bounding map growth under IP churn or key
+// rotation.
+const idleEvictAfter = 30 * time.Minute
+
+type entry struct {
+	limiter *rate.Limiter
+	seen    time.Time
+}
+
 type Limiter struct {
 	rps   rate.Limit
 	burst int
 
 	mu       sync.Mutex
-	limiters map[string]*rate.Limiter
+	limiters map[string]*entry
 }
 
 func New(requestsPerSecond float64, burst int) *Limiter {
-	return &Limiter{
+	l := &Limiter{
 		rps:      rate.Limit(requestsPerSecond),
 		burst:    burst,
-		limiters: make(map[string]*rate.Limiter),
+		limiters: make(map[string]*entry),
 	}
+	go l.sweepLoop()
+	return l
 }
 
 func (l *Limiter) Allow(key string) bool {
 	l.mu.Lock()
-	rl, ok := l.limiters[key]
+	e, ok := l.limiters[key]
 	if !ok {
-		rl = rate.NewLimiter(l.rps, l.burst)
-		l.limiters[key] = rl
+		e = &entry{limiter: rate.NewLimiter(l.rps, l.burst)}
+		l.limiters[key] = e
 	}
+	e.seen = time.Now()
+	rl := e.limiter
 	l.mu.Unlock()
 	return rl.Allow()
+}
+
+func (l *Limiter) sweepLoop() {
+	ticker := time.NewTicker(idleEvictAfter)
+	defer ticker.Stop()
+	for range ticker.C {
+		cutoff := time.Now().Add(-idleEvictAfter)
+		l.mu.Lock()
+		for key, e := range l.limiters {
+			if e.seen.Before(cutoff) {
+				delete(l.limiters, key)
+			}
+		}
+		l.mu.Unlock()
+	}
 }
 
 // Middleware rejects requests over the per-key rate with 429. Callers with
