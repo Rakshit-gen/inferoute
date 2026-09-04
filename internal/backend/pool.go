@@ -33,6 +33,7 @@ type Backend struct {
 
 	healthy  atomic.Bool
 	inflight atomic.Int64 // requests currently being proxied (least_pending)
+	checking atomic.Bool  // a health check for this backend is in flight
 }
 
 func (b *Backend) Healthy() bool { return b.healthy.Load() }
@@ -202,6 +203,13 @@ func (p *Pool) Snapshot() []Status {
 func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time.Duration) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	check := func(b *Backend) {
+		// Skip if the previous tick's check for this backend hasn't returned
+		// yet, so a slow check can't land after (and overwrite) a newer one.
+		if !b.checking.CompareAndSwap(false, true) {
+			return
+		}
+		defer b.checking.Store(false)
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.URL.String()+path, nil)
 		if err != nil {
 			b.healthy.Store(false)
