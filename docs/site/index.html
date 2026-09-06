@@ -335,18 +335,28 @@ $ inferouted -h                            <span class="dim"># prints usage and 
     <section id="benchmarks">
       <h2>Benchmarks</h2>
       <p>
-        Measured against the real <code>inferouted</code> binary, not
-        estimated: one dev machine, load generator and gateway sharing the
-        same CPU cores, so treat the absolute numbers as directional. The
-        relative shape (small fixed overhead, huge cache win) is the real
-        finding.
+        Measured with <code>cmd/loadtest</code>, driving the real proxy
+        pipeline (auth &rarr; rate limit &rarr; backend selection &rarr;
+        forward) against mock OpenAI-compatible backends. One dev machine,
+        load generator and gateway sharing the same CPU cores, so treat the
+        absolute numbers as directional. 64 connections, medians of 3 runs.
       </p>
       <div class="label">Routing overhead: direct vs. through inferoute</div>
       <table>
-        <tr><th></th><th>Requests/sec</th><th>Mean latency</th><th>p50</th><th>p99</th></tr>
-        <tr><td>Direct to backend</td><td>~11,400</td><td>1.8ms</td><td>0ms</td><td>1ms</td></tr>
-        <tr><td>Through inferoute</td><td>~3,450</td><td>5.8ms</td><td>1ms</td><td>31ms</td></tr>
+        <tr><th></th><th>Requests/sec</th><th>p50</th><th>p90</th><th>p99</th></tr>
+        <tr><td>Direct to backend (bypassed)</td><td>~140,000</td><td>0.4ms</td><td>0.8ms</td><td>1.6ms</td></tr>
+        <tr><td>Through inferoute</td><td>~65,000</td><td>0.9ms</td><td>1.6ms</td><td>2.9ms</td></tr>
+        <tr><td>+ API-key auth</td><td>~62,000</td><td>0.9ms</td><td>1.6ms</td><td>2.9ms</td></tr>
+        <tr><td>+ rate limit (in-process)</td><td>~64,000</td><td>0.9ms</td><td>1.6ms</td><td>2.9ms</td></tr>
+        <tr><td>+ rate limit (Redis, shared)</td><td>~35,000</td><td>1.9ms</td><td>2.4ms</td><td>3.3ms</td></tr>
       </table>
+      <p>
+        Proxy overhead over a direct call: <b>+0.5ms p50, +1.2ms p99</b>.
+        API-key auth and the in-process limiter are free; the Redis limiter
+        costs one round trip per request. Killing one of two backends
+        mid-load dropped <b>0 of ~700k requests</b> &mdash; failover is
+        immediate.
+      </p>
       <div class="label">Semantic cache (20 trials each, 700ms simulated backend latency)</div>
       <table>
         <tr><th></th><th>Mean latency</th></tr>

@@ -241,24 +241,40 @@ Every field has a sane default except `backends`, which is required.
 
 ## Benchmarks
 
-Measured against the real `inferouted` binary — not estimated. Everything
-below ran on one dev machine (the load generator, fake backend, and gateway
-all sharing the same CPU cores), so treat the absolute numbers as
-directional rather than an isolated production benchmark; the relative
-shape (small fixed overhead, huge cache win) is the real finding.
+Measured with `cmd/loadtest` (`go run ./cmd/loadtest`), which drives the
+real proxy pipeline — API-key auth → rate limit → model resolution →
+backend selection → forward — against mock OpenAI-compatible backends.
+Everything runs on one dev machine (load generator, mock backends, and
+gateway all sharing the same CPU cores), so treat absolute numbers as
+directional; the shape (small fixed overhead, free auth/limiting,
+lossless failover) is the finding. 64 connections, closed loop, medians of
+3 runs.
 
-**Routing overhead** — `ab -n 2000 -c 20`, direct to a near-zero-latency
-backend vs. through inferoute (round-robin over 1 backend, no cache, no
-rate limit):
+**Routing overhead** — direct to a near-zero-latency backend vs. through
+inferoute (round-robin over 1 backend):
 
-| | Requests/sec | Mean latency | p50 | p99 |
+| | Requests/sec | p50 | p90 | p99 |
 |---|---|---|---|---|
-| Direct to backend | ~11,400 | 1.8ms | 0ms | 1ms |
-| Through inferoute | ~3,450 | 5.8ms | 1ms | 31ms |
+| Direct to backend (gateway bypassed)          | ~140,000 | 0.4 ms | 0.8 ms | 1.6 ms |
+| Through inferoute                              | ~65,000 (peak 80k) | 0.9 ms | 1.6 ms | 2.9 ms |
+| + API-key auth                                 | ~62,000 | 0.9 ms | 1.6 ms | 2.9 ms |
+| + rate limit (in-process token bucket)         | ~64,000 | 0.9 ms | 1.6 ms | 2.9 ms |
+| + rate limit (Redis, shared across instances)  | ~35,000 | 1.9 ms | 2.4 ms | 3.3 ms |
 
-A few milliseconds of routing/retry/body-parsing overhead under concurrent
-load — real, but small next to actual inference latency (hundreds of ms to
-seconds).
+Proxy overhead over a direct call: **+0.5 ms p50, +1.2 ms p99** — real, but
+small next to actual inference latency (hundreds of ms to seconds).
+API-key auth and the in-process limiter are effectively free; the
+Redis-backed limiter costs one round trip per request (~half the
+throughput, still 35k/s).
+
+**Failover** — two backends, round-robin, one hard-killed mid-load:
+**0 failed requests** across ~700k (the handful of requests in flight to
+the dead backend when it dropped retry onto the survivor and still return
+200). Recovery is immediate — no request fails after the kill.
+
+```bash
+go run ./cmd/loadtest -conns 64 -duration 20s   # add REDIS_ADDR for the shared-limiter row
+```
 
 **Semantic cache** — a backend with an artificial 700ms delay (standing in
 for real LLM inference time) behind a NuclaDB-backed cache, 20 trials each:
