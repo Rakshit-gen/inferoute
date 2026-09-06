@@ -33,8 +33,23 @@ type Handler struct {
 }
 
 func New(pool *backend.Pool) *Handler {
+	// http.DefaultTransport keeps only 2 idle connections per host. A
+	// gateway funnels every request for a model at a handful of backends,
+	// so under concurrent load that cap turns almost every request into a
+	// fresh TCP (and TLS) handshake — connection churn, latency, and
+	// ephemeral-port pressure. Raise the idle pool to match how this is
+	// actually used; keep the transport's own timeouts modest so a dead
+	// backend fails fast enough to retry another.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 256
+	transport.MaxIdleConnsPerHost = 64
+	transport.IdleConnTimeout = 90 * time.Second
+
 	h := &Handler{
-		Client: &http.Client{Timeout: 5 * time.Minute}, // generous: covers slow model generations
+		Client: &http.Client{
+			Timeout:   5 * time.Minute, // generous: covers slow model generations
+			Transport: transport,
+		},
 	}
 	h.pool.Store(pool)
 	empty := map[string]string{}

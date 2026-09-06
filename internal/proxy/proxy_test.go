@@ -72,6 +72,24 @@ func TestServeHTTPFailsOverToHealthyBackend(t *testing.T) {
 	}
 }
 
+// The proxy funnels every request for a model at a few backends. If it
+// falls back to http.DefaultTransport (2 idle conns per host) that becomes
+// connection churn under load, so New must install a transport with a real
+// idle pool.
+func TestNewUsesPooledTransport(t *testing.T) {
+	pool, err := backend.NewPool([]config.Backend{{Name: "b", URL: "http://127.0.0.1:1", Models: []string{"llama3"}}})
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	tr, ok := New(pool).Client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", New(pool).Client.Transport)
+	}
+	if tr.MaxIdleConnsPerHost <= http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost {
+		t.Fatalf("MaxIdleConnsPerHost %d is no better than the default", tr.MaxIdleConnsPerHost)
+	}
+}
+
 func TestServeHTTPStreamsResponse(t *testing.T) {
 	sse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
