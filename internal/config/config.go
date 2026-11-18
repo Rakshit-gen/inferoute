@@ -5,7 +5,9 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -93,6 +95,19 @@ type Config struct {
 	APIKeys []string `json:"api_keys"`
 }
 
+// checkHTTPURL requires an absolute http(s) URL. Its errors never quote the
+// URL, which may contain credentials.
+func checkHTTPURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return errors.New("not a valid URL")
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("must look like http://host:port")
+	}
+	return nil
+}
+
 var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // expandSecret replaces each ${VAR} in s with that environment variable.
@@ -171,6 +186,15 @@ func Load(path string) (*Config, error) {
 	for i, b := range cfg.Backends {
 		if b.Name == "" || b.URL == "" || len(b.Models) == 0 {
 			return nil, fmt.Errorf("config %s: backends[%d] missing name, url, or models", path, i)
+		}
+		if err := checkHTTPURL(b.URL); err != nil {
+			return nil, fmt.Errorf("config %s: backend %s url: %w", path, b.Name, err)
+		}
+		if b.PathPrefix != "" && !strings.HasPrefix(b.PathPrefix, "/") {
+			return nil, fmt.Errorf("config %s: backend %s path_prefix must start with /", path, b.Name)
+		}
+		if b.Weight < 0 {
+			return nil, fmt.Errorf("config %s: backend %s weight must not be negative", path, b.Name)
 		}
 	}
 

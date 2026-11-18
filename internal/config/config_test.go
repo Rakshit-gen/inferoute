@@ -75,3 +75,18 @@ func TestExpandsSecretsFromEnv(t *testing.T) {
 func TestUnsetSecretIsAnError(t *testing.T) {
 	wantErr(t, `{"api_keys":["${INFEROUTE_TEST_UNSET}"],`+oneBackend+`}`, "INFEROUTE_TEST_UNSET")
 }
+
+func TestRejectsBadBackendFields(t *testing.T) {
+	for name, b := range map[string]string{
+		"no scheme":  `{"name":"a","url":"localhost:11434","models":["m"]}`,
+		"ftp":        `{"name":"a","url":"ftp://h","models":["m"]}`,
+		"prefix":     `{"name":"a","url":"http://h","models":["m"],"path_prefix":"openai"}`,
+		"neg weight": `{"name":"a","url":"http://h","models":["m"],"weight":-1}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := load(t, `{"backends":[`+b+`]}`); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
+	}
+}
