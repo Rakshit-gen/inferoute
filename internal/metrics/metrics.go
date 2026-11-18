@@ -32,3 +32,38 @@ var (
 func ObserveDuration(model string, start time.Time) {
 	RequestDuration.WithLabelValues(model).Observe(time.Since(start).Seconds())
 }
+
+var (
+	backendUpDesc = prometheus.NewDesc("inferoute_backend_up",
+		"Whether the backend can currently take traffic (1) or not (0).", []string{"backend"}, nil)
+	backendInflightDesc = prometheus.NewDesc("inferoute_backend_inflight_requests",
+		"Requests currently being proxied to the backend.", []string{"backend"}, nil)
+)
+
+// BackendState is one backend as seen at scrape time.
+type BackendState struct {
+	Name     string
+	Up       bool
+	Inflight int64
+}
+
+type backendCollector func() []BackendState
+
+func (backendCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- backendUpDesc
+	ch <- backendInflightDesc
+}
+
+func (c backendCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, b := range c() {
+		up := 0.0
+		if b.Up {
+			up = 1
+		}
+		ch <- prometheus.MustNewConstMetric(backendUpDesc, prometheus.GaugeValue, up, b.Name)
+		ch <- prometheus.MustNewConstMetric(backendInflightDesc, prometheus.GaugeValue, float64(b.Inflight), b.Name)
+	}
+}
+
+// RegisterBackends exports the states returned by fn on every scrape.
+func RegisterBackends(fn func() []BackendState) { prometheus.MustRegister(backendCollector(fn)) }

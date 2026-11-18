@@ -274,6 +274,8 @@ type Status struct {
 	URL     string   `json:"url"`
 	Models  []string `json:"models"`
 	Healthy bool     `json:"healthy"`
+	// Inflight is the number of requests currently being proxied.
+	Inflight int64 `json:"inflight"`
 }
 
 // Snapshot returns the current health of every backend in the pool.
@@ -282,7 +284,7 @@ func (p *Pool) Snapshot() []Status {
 	for i, b := range p.all {
 		safe := *b.URL
 		safe.User, safe.RawQuery = nil, ""
-		out[i] = Status{Name: b.Name, URL: safe.String(), Models: b.Models, Healthy: b.Healthy()}
+		out[i] = Status{Name: b.Name, URL: safe.String(), Models: b.Models, Healthy: b.Healthy(), Inflight: b.inflight.Load()}
 	}
 	return out
 }

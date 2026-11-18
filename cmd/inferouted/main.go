@@ -20,6 +20,7 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
+	"github.com/Rakshit-gen/inferoute/internal/metrics"
 	"github.com/Rakshit-gen/inferoute/internal/proxy"
 	"github.com/Rakshit-gen/inferoute/internal/ratelimit"
 )
@@ -98,6 +99,14 @@ func main() {
 	if gate.Required() {
 		log.Printf("inferouted: API-key auth enabled (%d key(s))", len(cfg.APIKeys))
 	}
+
+	metrics.RegisterBackends(func() []metrics.BackendState {
+		var out []metrics.BackendState
+		for _, s := range h.CurrentPool().Snapshot() {
+			out = append(out, metrics.BackendState{Name: s.Name, Up: s.Healthy, Inflight: s.Inflight})
+		}
+		return out
+	})
 
 	a := &app{h: h, gate: gate, proxied: handler}
 	a.cfg.Store(cfg)
