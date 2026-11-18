@@ -348,3 +348,14 @@ func TestRejectsNonPOST(t *testing.T) {
 		t.Fatalf("status = %d, headers = %v", rec.Code, rec.Header())
 	}
 }
+
+func TestErrorsAreJSON(t *testing.T) {
+	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
+	rec := post(h, `not json`)
+	var got struct {
+		Error struct{ Message, Type string } `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.Error.Type != "invalid_request_error" {
+		t.Fatalf("body = %s, err = %v", rec.Body, err)
+	}
+}

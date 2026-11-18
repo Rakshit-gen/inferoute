@@ -82,7 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "reading request body: "+err.Error(), http.StatusBadRequest)
+		apierr.Write(w, http.StatusBadRequest, apierr.InvalidRequest, "invalid_body", "could not read the request body")
 		return
 	}
 	r.Body.Close()
@@ -93,7 +93,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Messages []cache.Message `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Model == "" {
-		http.Error(w, `request body must be JSON with a "model" field`, http.StatusBadRequest)
+		apierr.Write(w, http.StatusBadRequest, apierr.InvalidRequest, "invalid_body", `request body must be JSON with a "model" field`)
 		return
 	}
 	model := parsed.Model
@@ -141,7 +141,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b, release, err := pool.Next(model)
 		if err != nil {
 			metrics.RequestsTotal.WithLabelValues(model, "none", "503").Inc()
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "no_backend_available", err.Error())
 			return
 		}
 
@@ -159,7 +159,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("inferoute: %s, retrying (attempt %d/%d)", lastErr, attempt+1, maxAttempts)
 	}
 	metrics.RequestsTotal.WithLabelValues(model, "none", "502").Inc()
-	http.Error(w, "all backends failed: "+lastErr.Error(), http.StatusBadGateway)
+	apierr.Write(w, http.StatusBadGateway, apierr.Server, "all_backends_failed", "all backends failed: "+lastErr.Error())
 }
 
 func (h *Handler) storeInCache(key string, response []byte, contentType string) {
