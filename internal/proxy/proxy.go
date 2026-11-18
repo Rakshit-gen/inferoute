@@ -219,6 +219,15 @@ func upstreamHeaders(in http.Header) http.Header {
 	return out
 }
 
+// copyResponseHeaders adds a backend's end-to-end headers to dst.
+func copyResponseHeaders(dst, src http.Header) {
+	src = src.Clone()
+	stripHop(src)
+	for k, vs := range src {
+		dst[k] = append(dst[k], vs...)
+	}
+}
+
 func (h *Handler) storeInCache(key string, response []byte, contentType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -262,11 +271,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	ct := resp.Header.Get("Content-Type")
 	var buf bytes.Buffer
 
-	for k, vs := range resp.Header {
-		for _, v := range vs {
-			w.Header().Add(k, v)
-		}
-	}
+	copyResponseHeaders(w.Header(), resp.Header)
 	// Tell the caller which backend actually served this — the playground
 	// and dashboard surface it, and it pairs with X-Inferoute-Cache.
 	w.Header().Set("X-Inferoute-Backend", b.Name)
