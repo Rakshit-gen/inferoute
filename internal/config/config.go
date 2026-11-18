@@ -101,6 +101,9 @@ type Config struct {
 	APIKeys []string `json:"api_keys"`
 	// MaxRequestBodyBytes rejects larger request bodies with 413.
 	MaxRequestBodyBytes int64 `json:"max_request_body_bytes"`
+	// MaxConcurrentRequests sheds requests beyond this many with 503. 0
+	// disables the limit.
+	MaxConcurrentRequests int `json:"max_concurrent_requests"`
 	// UpstreamTimeout limits the wait for a backend's response headers, which
 	// for a non-streaming request means the whole generation.
 	UpstreamTimeout Duration `json:"upstream_timeout"`
@@ -168,11 +171,12 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		HealthCheckInterval: Duration(10 * time.Second),
-		HealthCheckTimeout:  Duration(2 * time.Second),
-		MaxRequestBodyBytes: 16 << 20,
-		UpstreamTimeout:     Duration(5 * time.Minute),
-		StreamIdleTimeout:   Duration(2 * time.Minute),
+		HealthCheckInterval:   Duration(10 * time.Second),
+		HealthCheckTimeout:    Duration(2 * time.Second),
+		MaxRequestBodyBytes:   16 << 20,
+		MaxConcurrentRequests: 1024,
+		UpstreamTimeout:       Duration(5 * time.Minute),
+		StreamIdleTimeout:     Duration(2 * time.Minute),
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -207,6 +211,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.UpstreamTimeout <= 0 || cfg.StreamIdleTimeout <= 0 {
 		return nil, fmt.Errorf("config %s: upstream_timeout and stream_idle_timeout must be positive", path)
+	}
+	if cfg.MaxConcurrentRequests < 0 {
+		return nil, fmt.Errorf("config %s: max_concurrent_requests must not be negative", path)
 	}
 	if cfg.MaxRequestBodyBytes <= 0 {
 		return nil, fmt.Errorf("config %s: max_request_body_bytes must be positive", path)

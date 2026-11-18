@@ -50,6 +50,7 @@ func main() {
 	h := proxy.New(pool)
 	h.SetAliases(cfg.ModelAliases)
 	h.MaxBodyBytes = cfg.MaxRequestBodyBytes
+	h.SetMaxConcurrent(cfg.MaxConcurrentRequests)
 	h.UpstreamTimeout = time.Duration(cfg.UpstreamTimeout)
 	h.StreamIdleTimeout = time.Duration(cfg.StreamIdleTimeout)
 

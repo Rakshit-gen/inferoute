@@ -560,3 +560,19 @@ func TestBrokenStreamAbortsClientConnection(t *testing.T) {
 		t.Fatal("the client must see the truncated response as an error")
 	}
 }
+
+func TestShedsLoadAtCapacity(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { close(entered); <-release })
+	h := New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}}))
+	h.SetMaxConcurrent(1)
+	done := make(chan struct{})
+	go func() { post(h, modelBody); close(done) }()
+	<-entered
+	rec := post(h, modelBody)
+	close(release)
+	<-done
+	if rec.Code != 503 || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}

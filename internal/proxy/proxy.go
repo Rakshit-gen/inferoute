@@ -45,6 +45,7 @@ type Handler struct {
 	// StreamIdleTimeout limits the gap between response chunks.
 	StreamIdleTimeout time.Duration
 
+	slots    chan struct{} // nil means no concurrency limit
 	stores   chan struct{} // limits concurrent background cache writes
 	storesWG sync.WaitGroup
 
@@ -80,6 +81,15 @@ func New(pool *backend.Pool) *Handler {
 	return h
 }
 
+// SetMaxConcurrent limits requests handled at once; n <= 0 removes the limit.
+// Call it before serving.
+func (h *Handler) SetMaxConcurrent(n int) {
+	h.slots = nil
+	if n > 0 {
+		h.slots = make(chan struct{}, n)
+	}
+}
+
 // SetPool atomically swaps the backend pool a running Handler routes
 // against, so it can pick up config changes (e.g. a SIGHUP reload) without
 // disrupting in-flight requests.
@@ -101,6 +111,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 		apierr.Write(w, http.StatusMethodNotAllowed, apierr.InvalidRequest, "method_not_allowed", "this endpoint accepts POST")
 		return
+	}
+	if h.slots != nil {
+		select {
+		case h.slots <- struct{}{}:
+			defer func() { <-h.slots }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "overloaded", "the gateway is at capacity")
+			return
+		}
 	}
 	// A deadline on the body alone: http.Server.ReadTimeout would also cancel
 	// the request while a slow generation is running.
