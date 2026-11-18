@@ -53,7 +53,11 @@ type Cache struct {
 // after a failure.
 var ErrUnavailable = errors.New("cache temporarily bypassed after a failure")
 
-const outageBackoff = 30 * time.Second
+const (
+	outageBackoff = 30 * time.Second
+	maxErrorBody  = 4 << 10
+	maxSearchBody = 32 << 20 // searchDepth entries of up to ~1 MiB, JSON-escaped
+)
 
 func New(cfg Config) *Cache {
 	if cfg.LookupTimeout <= 0 {
@@ -77,7 +81,7 @@ func (c *Cache) EnsureTenant(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		// NuclaDB reports an existing tenant as 400 InvalidArgument, not 409,
 		// so "already exists" is the only reliable signal to ignore here.
 		if resp.StatusCode == http.StatusConflict || strings.Contains(string(b), "already exists") {
@@ -140,7 +144,7 @@ func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return Result{}, fmt.Errorf("searching cache: %s: %s", resp.Status, b)
 	}
 
@@ -150,7 +154,7 @@ func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) 
 			Metadata map[string]string `json:"metadata"`
 		} `json:"matches"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxSearchBody)).Decode(&result); err != nil {
 		return Result{}, fmt.Errorf("decoding cache search response: %w", err)
 	}
 	for _, m := range result.Matches {
@@ -204,7 +208,7 @@ func (c *Cache) Store(ctx context.Context, scope, text string, response []byte, 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return fmt.Errorf("storing in cache: %s: %s", resp.Status, b)
 	}
 	return nil
@@ -230,14 +234,14 @@ func (c *Cache) embed(ctx context.Context, text string) ([]float32, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return nil, fmt.Errorf("%s: %s", resp.Status, b)
 	}
 
 	var out struct {
 		Embedding []float32 `json:"embedding"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxErrorBody*64)).Decode(&out); err != nil {
 		return nil, err
 	}
 	if len(out.Embedding) == 0 {
