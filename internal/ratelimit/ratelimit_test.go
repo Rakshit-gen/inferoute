@@ -49,3 +49,14 @@ func TestMiddlewareIsolatesKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestRejectionCarriesRetryAfter(t *testing.T) {
+	h := Middleware(New(0.1, 1), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "10" {
+		t.Fatalf("status = %d, Retry-After = %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+}

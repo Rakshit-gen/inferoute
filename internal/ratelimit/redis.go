@@ -17,7 +17,11 @@ import (
 type RedisLimiter struct {
 	rdb   *redis.Client
 	limit int64
+	rps   float64
 }
+
+// RetryAfter implements Allower.
+func (r *RedisLimiter) RetryAfter() time.Duration { return tokenInterval(r.rps) }
 
 func NewRedis(addr string, requestsPerSecond float64, burst int) *RedisLimiter {
 	limit := int64(requestsPerSecond)
@@ -30,6 +34,7 @@ func NewRedis(addr string, requestsPerSecond float64, burst int) *RedisLimiter {
 	return &RedisLimiter{
 		rdb:   redis.NewClient(&redis.Options{Addr: addr}),
 		limit: limit,
+		rps:   requestsPerSecond,
 	}
 }
 

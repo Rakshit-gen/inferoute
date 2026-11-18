@@ -3,13 +3,17 @@
 package ratelimit
 
 import (
+	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/Rakshit-gen/inferoute/internal/apierr"
 )
 
 // Allower reports whether the caller identified by key may proceed. New
@@ -17,6 +21,13 @@ import (
 // that shares state across gateway instances.
 type Allower interface {
 	Allow(key string) bool
+	// RetryAfter is how long a rejected caller should wait for a new token.
+	RetryAfter() time.Duration
+}
+
+// tokenInterval is the time one token takes to refill.
+func tokenInterval(requestsPerSecond float64) time.Duration {
+	return time.Duration(float64(time.Second) / requestsPerSecond)
 }
 
 // idleEvictAfter is how long a key's limiter survives with no traffic
@@ -60,6 +71,9 @@ func (l *Limiter) Allow(key string) bool {
 	return rl.Allow()
 }
 
+// RetryAfter implements Allower.
+func (l *Limiter) RetryAfter() time.Duration { return tokenInterval(float64(l.rps)) }
+
 func (l *Limiter) sweepLoop() {
 	ticker := time.NewTicker(idleEvictAfter)
 	defer ticker.Stop()
@@ -80,7 +94,9 @@ func (l *Limiter) sweepLoop() {
 func Middleware(l Allower, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !l.Allow(keyFor(r)) {
-			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			secs := int(math.Ceil(l.RetryAfter().Seconds()))
+			w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
+			apierr.Write(w, http.StatusTooManyRequests, apierr.RateLimit, "rate_limit_exceeded", "rate limit exceeded")
 			return
 		}
 		next.ServeHTTP(w, r)
