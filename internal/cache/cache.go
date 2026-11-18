@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -108,6 +109,24 @@ type Result struct {
 	Body        []byte
 	ContentType string    // text/event-stream for a streamed response
 	Vector      []float32 // the prompt's embedding, reusable by Store
+}
+
+// EnsureTenantLoop retries EnsureTenant with backoff until it succeeds or ctx
+// ends.
+func (c *Cache) EnsureTenantLoop(ctx context.Context, retry time.Duration) {
+	for {
+		err := c.EnsureTenant(ctx)
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		log.Printf("inferoute: cache tenant setup: %v (retrying in %s)", err, retry)
+		select {
+		case <-time.After(retry):
+		case <-ctx.Done():
+			return
+		}
+		retry = min(retry*2, time.Minute)
+	}
 }
 
 // Lookup embeds text and returns the nearest entry in scope whose distance

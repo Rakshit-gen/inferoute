@@ -74,9 +74,7 @@ func main() {
 			LookupTimeout:        time.Duration(cfg.Cache.LookupTimeout),
 			TTL:                  time.Duration(cfg.Cache.TTL),
 		})
-		if err := c.EnsureTenant(ctx); err != nil {
-			log.Printf("inferouted: cache tenant setup: %v (continuing; cache calls will fail until this is fixed)", err)
-		}
+		go c.EnsureTenantLoop(ctx, time.Second)
 		h.Cache = c
 		log.Printf("inferouted: semantic cache enabled against %s (max distance %.2f)", cfg.Cache.NuclaDBAddr, cfg.Cache.MaxDistance)
 	}

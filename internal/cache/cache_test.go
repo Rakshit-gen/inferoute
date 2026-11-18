@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -249,5 +250,19 @@ func TestExpired(t *testing.T) {
 	}
 	if New(Config{}).expired("") {
 		t.Fatal("without a TTL nothing expires")
+	}
+}
+
+func TestEnsureTenantLoopRetries(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(500)
+		}
+	}))
+	defer srv.Close()
+	New(Config{NuclaDBAddr: srv.URL, TenantID: "t"}).EnsureTenantLoop(context.Background(), time.Millisecond)
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d", calls.Load())
 	}
 }
