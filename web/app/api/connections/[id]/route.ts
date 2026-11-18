@@ -18,12 +18,12 @@ async function guard() {
   if (!userId) throw new AuthError()
 }
 
-type Ctx = { params: { id: string } }
+type Ctx = { params: Promise<{ id: string }> }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   try {
     await guard()
-    await removeConnection(params.id)
+    await removeConnection((await params).id)
     return json(200, { ok: true })
   } catch (e) {
     return apiError(e, 'could not remove connection')
@@ -35,12 +35,13 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     await guard()
+    const { id } = await params
     const body = await req.json().catch(() => ({}))
     if (body.active) {
-      await setActiveConnection(params.id)
+      await setActiveConnection(id)
       return json(200, { ok: true })
     }
-    const conn = await updateConnection(params.id, {
+    const conn = await updateConnection(id, {
       name: body.name,
       url: body.url,
       apiKey: body.apiKey === null ? null : body.apiKey,

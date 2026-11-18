@@ -10,12 +10,12 @@ const json = (status: number, body: unknown) => NextResponse.json(body, { status
 
 // Probes one of the caller's connections: is the gateway reachable, and
 // does its API key work? Used by the "Test" button on the Connections page.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth()
     if (!userId) throw new AuthError()
 
-    const conn = await getConnection(params.id)
+    const conn = await getConnection((await params).id)
     if (!conn) return json(404, { error: 'unknown connection' })
 
     const started = Date.now()
