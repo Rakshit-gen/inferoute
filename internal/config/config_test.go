@@ -103,3 +103,8 @@ func TestRejectsBadHealthCheck(t *testing.T) {
 func TestRejectsBadListenAddr(t *testing.T) {
 	wantErr(t, `{"listen_addr":"8081",`+oneBackend+`}`, "listen_addr")
 }
+
+func TestRejectsBadRateLimit(t *testing.T) {
+	wantErr(t, `{"rate_limit":{"enabled":true},`+oneBackend+`}`, "requests_per_second")
+	wantErr(t, `{"rate_limit":{"enabled":true,"requests_per_second":1,"burst":-1},`+oneBackend+`}`, "burst")
+}

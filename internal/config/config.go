@@ -219,8 +219,16 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	if cfg.RateLimit.Enabled && cfg.RateLimit.Burst == 0 {
-		cfg.RateLimit.Burst = 1
+	if cfg.RateLimit.Enabled {
+		if cfg.RateLimit.RequestsPerSecond <= 0 {
+			return nil, fmt.Errorf("config %s: rate_limit.requests_per_second must be positive", path)
+		}
+		if cfg.RateLimit.Burst < 0 {
+			return nil, fmt.Errorf("config %s: rate_limit.burst must not be negative", path)
+		}
+		if cfg.RateLimit.Burst == 0 {
+			cfg.RateLimit.Burst = 1
+		}
 	}
 	if cfg.Cache.Enabled {
 		if cfg.Cache.NuclaDBAddr == "" || cfg.Cache.EmbeddingBackendAddr == "" || cfg.Cache.EmbeddingModel == "" {
