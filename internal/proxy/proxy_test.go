@@ -654,3 +654,13 @@ func TestCacheIsPrivatePerCaller(t *testing.T) {
 		t.Fatal("the same key should hit")
 	}
 }
+
+func TestNoStoreBypassesCache(t *testing.T) {
+	h := cachedHandler(t, "m")
+	body := `{"model":"m",` + chat + `}`
+	post(h, body)
+	h.Drain(context.Background())
+	if rec := post(h, body, "Cache-Control", "no-store"); rec.Header().Get("X-Inferoute-Cache") == "hit" {
+		t.Fatal("no-store must skip the cache")
+	}
+}

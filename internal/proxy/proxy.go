@@ -174,7 +174,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var messages []cache.Message
 	cacheable := false
-	if h.Cache != nil {
+	if h.Cache != nil && !bypassesCache(r) {
 		messages, cacheable = cache.ParseMessages(parsed.Messages)
 	}
 	var cacheKey, scope string
@@ -318,6 +318,11 @@ func (h *Handler) Drain(ctx context.Context) {
 	case <-done:
 	case <-ctx.Done():
 	}
+}
+
+func bypassesCache(r *http.Request) bool {
+	cc := strings.ToLower(r.Header.Get("Cache-Control"))
+	return strings.Contains(cc, "no-store") || strings.Contains(cc, "no-cache")
 }
 
 // cacheScope covers everything that changes the answer other than the
