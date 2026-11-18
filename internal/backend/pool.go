@@ -41,9 +41,19 @@ type Backend struct {
 	healthy  atomic.Bool
 	inflight atomic.Int64 // requests currently being proxied (least_pending)
 	checking atomic.Bool  // a health check for this backend is in flight
+
+	failures     atomic.Int32 // consecutive failed requests
+	ejectedUntil atomic.Int64 // unix nanos; no traffic before this time
 }
 
-func (b *Backend) Healthy() bool { return b.healthy.Load() }
+// ejectCooldown is how long a backend receives no traffic after failing.
+const ejectCooldown = 15 * time.Second
+
+// Healthy reports whether the backend passes health checks and is not
+// serving an ejection.
+func (b *Backend) Healthy() bool {
+	return b.healthy.Load() && time.Now().UnixNano() >= b.ejectedUntil.Load()
+}
 
 type Pool struct {
 	all      []*Backend
@@ -182,7 +192,11 @@ func weightOf(b *Backend) int {
 	return b.Weight
 }
 
-func (p *Pool) MarkUnhealthy(b *Backend) { b.healthy.Store(false) }
+// MarkUnhealthy ejects b for ejectCooldown. Health checks cannot end the
+// ejection early.
+func (p *Pool) MarkUnhealthy(b *Backend) {
+	b.ejectedUntil.Store(time.Now().Add(ejectCooldown).UnixNano())
+}
 
 // Models returns every model name any backend in the pool serves, sorted
 // and de-duplicated. Backs the OpenAI-compatible GET /v1/models.

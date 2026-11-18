@@ -3,6 +3,7 @@ package backend
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Rakshit-gen/inferoute/internal/config"
 )
@@ -214,5 +215,19 @@ func TestNextHonoursExclude(t *testing.T) {
 	}
 	if _, _, err := p.Next("m", first, second); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+}
+
+func TestEjectionOutlastsPassingHealthCheck(t *testing.T) {
+	p := mustPool(t, []config.Backend{{Name: "a", URL: "http://a", Models: []string{"m"}}})
+	b := p.all[0]
+	p.MarkUnhealthy(b)
+	b.healthy.Store(true) // what a passing probe does
+	if b.Healthy() {
+		t.Fatal("an ejected backend must stay out until the cooldown ends")
+	}
+	b.ejectedUntil.Store(time.Now().Add(-time.Second).UnixNano())
+	if !b.Healthy() {
+		t.Fatal("the backend should return after the cooldown")
 	}
 }
