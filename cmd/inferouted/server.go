@@ -45,6 +45,11 @@ func (a *app) routes() http.Handler {
 	mux.Handle("/v1/", gated)
 	mux.Handle("/metrics", gated)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if !a.h.CurrentPool().AnyHealthy() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	})
 	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(site.Index)

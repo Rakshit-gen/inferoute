@@ -165,3 +165,17 @@ func TestBackendsIsReadOnly(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+func TestReadyzTracksBackends(t *testing.T) {
+	a := testApp(t)
+	if rec := get(a.routes(), "/readyz"); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	pool := a.h.CurrentPool()
+	b, release, _ := pool.Next("m")
+	release()
+	pool.MarkUnhealthy(b)
+	if rec := get(a.routes(), "/readyz"); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}

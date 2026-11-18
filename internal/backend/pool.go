@@ -251,6 +251,9 @@ func (p *Pool) ReportFailure(b *Backend) {
 // ReportSuccess clears b's consecutive-failure count.
 func (p *Pool) ReportSuccess(b *Backend) { b.failures.Store(0) }
 
+// AnyHealthy reports whether at least one backend can take traffic.
+func (p *Pool) AnyHealthy() bool { return slices.ContainsFunc(p.all, (*Backend).Healthy) }
+
 // Serves reports whether any backend is configured for model.
 func (p *Pool) Serves(model string) bool { return len(p.byModel[model]) > 0 }
 
