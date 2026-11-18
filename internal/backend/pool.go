@@ -198,6 +198,20 @@ func (p *Pool) MarkUnhealthy(b *Backend) {
 	b.ejectedUntil.Store(time.Now().Add(ejectCooldown).UnixNano())
 }
 
+// failureThreshold is how many consecutive failed requests eject a backend.
+const failureThreshold = 3
+
+// ReportFailure records a failed request and ejects b at failureThreshold.
+func (p *Pool) ReportFailure(b *Backend) {
+	if b.failures.Add(1) >= failureThreshold {
+		b.failures.Store(0)
+		p.MarkUnhealthy(b)
+	}
+}
+
+// ReportSuccess clears b's consecutive-failure count.
+func (p *Pool) ReportSuccess(b *Backend) { b.failures.Store(0) }
+
 // Models returns every model name any backend in the pool serves, sorted
 // and de-duplicated. Backs the OpenAI-compatible GET /v1/models.
 func (p *Pool) Models() []string {

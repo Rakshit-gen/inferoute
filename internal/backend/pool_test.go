@@ -231,3 +231,20 @@ func TestEjectionOutlastsPassingHealthCheck(t *testing.T) {
 		t.Fatal("the backend should return after the cooldown")
 	}
 }
+
+func TestConsecutiveFailuresEject(t *testing.T) {
+	p := mustPool(t, []config.Backend{{Name: "a", URL: "http://a", Models: []string{"m"}}})
+	b := p.all[0]
+	p.ReportFailure(b)
+	p.ReportFailure(b)
+	p.ReportSuccess(b)
+	p.ReportFailure(b)
+	p.ReportFailure(b)
+	if !b.Healthy() {
+		t.Fatal("failures separated by a success must not eject")
+	}
+	p.ReportFailure(b)
+	if b.Healthy() {
+		t.Fatal("three consecutive failures must eject")
+	}
+}
