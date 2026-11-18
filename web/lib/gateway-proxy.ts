@@ -40,7 +40,7 @@ export async function gatewayFetch(conn: Connection, path: string, init: Request
 
 /** Proxies a GET to the connection's gateway, passing the body + status through. */
 export async function proxyGet(conn: Connection, path: string): Promise<Response> {
-  const upstream = await gatewayFetch(conn, path)
+  const upstream = await gatewayFetch(conn, path, { signal: AbortSignal.timeout(10_000) })
   const body = await upstream.text()
   return new NextResponse(body, {
     status: upstream.status,
