@@ -96,7 +96,7 @@ type Config struct {
 	ModelAliases map[string]string `json:"model_aliases"`
 	// CORSOrigins is the list of browser origins allowed to call the HTTP
 	// API (the dashboard at web/, plus the playground's POST). A single "*"
-	// entry allows any origin. Defaults to ["*"].
+	// entry allows any origin. Empty, the default, allows none.
 	CORSOrigins []string `json:"cors_origins"`
 	// APIKeys, when non-empty, is the allowlist of bearer tokens accepted on
 	// POST /v1/chat/completions — any other request gets 401. Empty (the
@@ -210,9 +210,6 @@ func Load(path string) (*Config, error) {
 	}
 	if _, _, err := net.SplitHostPort(cfg.ListenAddr); err != nil {
 		return nil, fmt.Errorf("config %s: listen_addr: %w", path, err)
-	}
-	if len(cfg.CORSOrigins) == 0 {
-		cfg.CORSOrigins = []string{"*"}
 	}
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"

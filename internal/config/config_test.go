@@ -132,3 +132,10 @@ func TestParsesTrustedProxies(t *testing.T) {
 func TestRejectsBadHealthTimeout(t *testing.T) {
 	wantErr(t, `{"health_check_timeout":"0s",`+oneBackend+`}`, "health_check_timeout")
 }
+
+func TestNoCORSOriginsByDefault(t *testing.T) {
+	cfg, err := load(t, `{`+oneBackend+`}`)
+	if err != nil || len(cfg.CORSOrigins) != 0 {
+		t.Fatalf("origins = %v, err = %v", cfg.CORSOrigins, err)
+	}
+}
