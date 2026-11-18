@@ -162,7 +162,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		b, release, err := pool.Next(model)
 		if err != nil {
+			if errors.Is(err, backend.ErrUnknownModel) {
+				metrics.RequestsTotal.WithLabelValues(model, "none", "404").Inc()
+				apierr.Write(w, http.StatusNotFound, apierr.InvalidRequest, "model_not_found", err.Error())
+				return
+			}
 			metrics.RequestsTotal.WithLabelValues(model, "none", "503").Inc()
+			w.Header().Set("Retry-After", "1")
 			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "no_backend_available", err.Error())
 			return
 		}

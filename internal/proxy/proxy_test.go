@@ -376,3 +376,10 @@ func TestForwardsMultimodalMessages(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
 }
+
+func TestUnknownModelIs404(t *testing.T) {
+	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
+	if rec := post(h, `{"model":"other"}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
