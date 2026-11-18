@@ -72,6 +72,7 @@ func main() {
 			MaxDistance:          cfg.Cache.MaxDistance,
 			TenantID:             cfg.Cache.TenantID,
 			LookupTimeout:        time.Duration(cfg.Cache.LookupTimeout),
+			TTL:                  time.Duration(cfg.Cache.TTL),
 		})
 		if err := c.EnsureTenant(ctx); err != nil {
 			log.Printf("inferouted: cache tenant setup: %v (continuing; cache calls will fail until this is fixed)", err)

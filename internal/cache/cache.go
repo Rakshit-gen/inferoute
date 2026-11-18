@@ -40,6 +40,7 @@ type Config struct {
 	MaxDistance          float32
 	TenantID             string
 	LookupTimeout        time.Duration // 0 means 2 seconds
+	TTL                  time.Duration // 0 means entries never expire
 }
 
 type Cache struct {
@@ -156,6 +157,9 @@ func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) 
 		if m.Score > c.cfg.MaxDistance || m.Metadata["scope"] != scope || m.Metadata["response"] == "" {
 			continue
 		}
+		if c.expired(m.Metadata["stored_at"]) {
+			continue
+		}
 		ct := m.Metadata["content_type"]
 		if ct == "" {
 			ct = "application/json"
@@ -163,6 +167,14 @@ func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) 
 		return Result{Hit: true, Body: []byte(m.Metadata["response"]), ContentType: ct}, nil
 	}
 	return Result{}, nil
+}
+
+func (c *Cache) expired(storedAt string) bool {
+	if c.cfg.TTL <= 0 {
+		return false
+	}
+	unix, err := strconv.ParseInt(storedAt, 10, 64)
+	return err != nil || time.Since(time.Unix(unix, 0)) > c.cfg.TTL
 }
 
 // Store embeds text and upserts it into NuclaDB with response and
@@ -178,7 +190,8 @@ func (c *Cache) Store(ctx context.Context, scope, text string, response []byte, 
 		"id":        idFor(scope, text),
 		"values":    vec,
 		"tenant_id": c.cfg.TenantID,
-		"metadata":  map[string]string{"response": string(response), "prompt": text, "content_type": contentType, "scope": scope},
+		"metadata": map[string]string{"response": string(response), "prompt": text, "content_type": contentType, "scope": scope,
+			"stored_at": strconv.FormatInt(time.Now().Unix(), 10)},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.NuclaDBAddr+"/v1/vectors", bytes.NewReader(reqBody))
 	if err != nil {

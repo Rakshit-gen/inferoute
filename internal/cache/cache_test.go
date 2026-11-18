@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -234,5 +235,19 @@ func TestFailureBypassesCache(t *testing.T) {
 	c.Lookup(context.Background(), "s", "q")
 	if _, err := c.Lookup(context.Background(), "s", "q"); !errors.Is(err, ErrUnavailable) || calls != 1 {
 		t.Fatalf("err = %v, calls = %d", err, calls)
+	}
+}
+
+func TestExpired(t *testing.T) {
+	c := New(Config{TTL: time.Hour})
+	now := time.Now().Unix()
+	if c.expired(strconv.FormatInt(now, 10)) {
+		t.Fatal("a fresh entry must not be expired")
+	}
+	if !c.expired(strconv.FormatInt(now-7200, 10)) || !c.expired("") {
+		t.Fatal("old or undated entries must be expired")
+	}
+	if New(Config{}).expired("") {
+		t.Fatal("without a TTL nothing expires")
 	}
 }

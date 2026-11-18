@@ -73,6 +73,8 @@ type Cache struct {
 	TenantID             string  `json:"tenant_id"`
 	// LookupTimeout bounds the embed and search done before each request.
 	LookupTimeout Duration `json:"lookup_timeout"`
+	// TTL is how long an entry may be served. 0s keeps entries indefinitely.
+	TTL Duration `json:"ttl"`
 }
 
 type Config struct {
@@ -175,6 +177,7 @@ func Load(path string) (*Config, error) {
 	cfg := &Config{
 		HealthCheckInterval:   Duration(10 * time.Second),
 		HealthCheckTimeout:    Duration(2 * time.Second),
+		Cache:                 Cache{TTL: Duration(24 * time.Hour)},
 		MaxRequestBodyBytes:   16 << 20,
 		MaxConcurrentRequests: 1024,
 		UpstreamTimeout:       Duration(5 * time.Minute),
@@ -299,6 +302,9 @@ func Load(path string) (*Config, error) {
 		// Cosine distance runs from 0 (identical) to 2 (opposite).
 		if cfg.Cache.MaxDistance < 0 || cfg.Cache.MaxDistance > 2 {
 			return nil, fmt.Errorf("config %s: cache.max_distance must be between 0 and 2", path)
+		}
+		if cfg.Cache.TTL < 0 || cfg.Cache.LookupTimeout < 0 {
+			return nil, fmt.Errorf("config %s: cache.ttl and cache.lookup_timeout must not be negative", path)
 		}
 		if cfg.Cache.MaxDistance == 0 {
 			cfg.Cache.MaxDistance = 0.05
