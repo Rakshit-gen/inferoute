@@ -33,11 +33,17 @@ func main() {
 	signal.Notify(hup, syscall.SIGHUP)
 
 	configPath := flag.String("config", "config.json", "path to the JSON config file listing backends")
+	check := flag.Bool("check", false, "validate the config file and exit")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("inferouted: %v", err)
+	}
+
+	if *check {
+		log.Printf("inferouted: %s is valid", *configPath)
+		return
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
