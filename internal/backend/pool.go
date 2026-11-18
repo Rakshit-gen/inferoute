@@ -195,7 +195,9 @@ type Status struct {
 func (p *Pool) Snapshot() []Status {
 	out := make([]Status, len(p.all))
 	for i, b := range p.all {
-		out[i] = Status{Name: b.Name, URL: b.URL.String(), Models: b.Models, Healthy: b.Healthy()}
+		safe := *b.URL
+		safe.User, safe.RawQuery = nil, ""
+		out[i] = Status{Name: b.Name, URL: safe.String(), Models: b.Models, Healthy: b.Healthy()}
 	}
 	return out
 }

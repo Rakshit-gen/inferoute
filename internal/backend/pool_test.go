@@ -193,3 +193,10 @@ func TestRepeatedBackendIsNotDoubleCounted(t *testing.T) {
 		t.Fatalf("byModel = %v", p.byModel)
 	}
 }
+
+func TestSnapshotHidesURLCredentials(t *testing.T) {
+	p := mustPool(t, []config.Backend{{Name: "a", URL: "http://u:secret@a:1/x?token=t", Models: []string{"m"}}})
+	if got := p.Snapshot()[0].URL; got != "http://a:1/x" {
+		t.Fatalf("URL = %q", got)
+	}
+}
