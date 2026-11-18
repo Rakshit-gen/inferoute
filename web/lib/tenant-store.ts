@@ -12,7 +12,7 @@ export interface Connection {
 
 export interface TenantData {
   connections: Connection[]
-  activeConnectionId?: string
+  activeConnectionId?: string | null
 }
 
 export class AuthError extends Error {}
@@ -45,10 +45,12 @@ export async function loadTenant(): Promise<TenantData> {
 async function saveTenant(data: TenantData): Promise<void> {
   const { userId, orgId } = await tenantRef()
   const client = await clerkClient()
+  // Clerk deep-merges metadata: only an explicit null removes the old value.
+  const inferoute = { ...data, activeConnectionId: data.activeConnectionId ?? null }
   if (orgId) {
-    await client.organizations.updateOrganizationMetadata(orgId, { privateMetadata: { inferoute: data } })
+    await client.organizations.updateOrganizationMetadata(orgId, { privateMetadata: { inferoute } })
   } else {
-    await client.users.updateUserMetadata(userId, { privateMetadata: { inferoute: data } })
+    await client.users.updateUserMetadata(userId, { privateMetadata: { inferoute } })
   }
 }
 
