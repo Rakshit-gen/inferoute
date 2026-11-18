@@ -3,9 +3,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/inferouted ./cmd/inferouted
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/inferouted ./cmd/inferouted
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/inferouted /inferouted
 EXPOSE 8081
 ENTRYPOINT ["/inferouted"]
