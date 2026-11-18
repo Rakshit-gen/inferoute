@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -219,5 +220,19 @@ func TestLookupTimesOut(t *testing.T) {
 	start := time.Now()
 	if _, err := c.Lookup(context.Background(), "s", "q"); err == nil || time.Since(start) > time.Second {
 		t.Fatalf("err = %v after %v", err, time.Since(start))
+	}
+}
+
+func TestFailureBypassesCache(t *testing.T) {
+	calls := 0
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(500)
+	}))
+	defer down.Close()
+	c := New(Config{NuclaDBAddr: down.URL, EmbeddingBackendAddr: down.URL, EmbeddingModel: "e"})
+	c.Lookup(context.Background(), "s", "q")
+	if _, err := c.Lookup(context.Background(), "s", "q"); !errors.Is(err, ErrUnavailable) || calls != 1 {
+		t.Fatalf("err = %v, calls = %d", err, calls)
 	}
 }

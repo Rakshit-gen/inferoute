@@ -181,7 +181,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if cacheable {
 		cacheKey = cache.PromptText(messages)
 		scope = cacheScope(r, body)
-		if found, err := h.Cache.Lookup(r.Context(), scope, cacheKey); err != nil {
+		if found, err := h.Cache.Lookup(r.Context(), scope, cacheKey); errors.Is(err, cache.ErrUnavailable) {
+			cacheable = false // don't queue writes against a cache that is down
+			metrics.CacheLookups.WithLabelValues("skipped").Inc()
+		} else if err != nil {
 			log.Printf("inferoute: cache lookup: %v", err)
 			metrics.CacheLookups.WithLabelValues("error").Inc()
 		} else if found.Hit {

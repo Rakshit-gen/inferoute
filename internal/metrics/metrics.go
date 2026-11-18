@@ -24,7 +24,7 @@ var (
 
 	CacheLookups = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "inferoute_cache_lookups_total",
-		Help: "Semantic cache lookups by outcome: hit, miss, or error.",
+		Help: "Semantic cache lookups by outcome: hit, miss, error, or skipped.",
 	}, []string{"outcome"})
 )
 

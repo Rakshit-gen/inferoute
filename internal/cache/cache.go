@@ -23,11 +23,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,9 +43,16 @@ type Config struct {
 }
 
 type Cache struct {
-	cfg    Config
-	client *http.Client
+	cfg       Config
+	client    *http.Client
+	downUntil atomic.Int64 // unix nanos; lookups are skipped before this
 }
+
+// ErrUnavailable is returned by Lookup while the cache is being bypassed
+// after a failure.
+var ErrUnavailable = errors.New("cache temporarily bypassed after a failure")
+
+const outageBackoff = 30 * time.Second
 
 func New(cfg Config) *Cache {
 	if cfg.LookupTimeout <= 0 {
@@ -98,6 +107,17 @@ type Result struct {
 // Lookup embeds text and returns the nearest entry in scope whose distance
 // is within MaxDistance.
 func (c *Cache) Lookup(ctx context.Context, scope, text string) (Result, error) {
+	if time.Now().UnixNano() < c.downUntil.Load() {
+		return Result{}, ErrUnavailable
+	}
+	res, err := c.lookup(ctx, scope, text)
+	if err != nil && ctx.Err() == nil {
+		c.downUntil.Store(time.Now().Add(outageBackoff).UnixNano())
+	}
+	return res, err
+}
+
+func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.LookupTimeout)
 	defer cancel()
 	vec, err := c.embed(ctx, text)
