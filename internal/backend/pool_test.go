@@ -201,3 +201,18 @@ func TestSnapshotHidesURLCredentials(t *testing.T) {
 		t.Fatalf("URL = %q", got)
 	}
 }
+
+func TestNextHonoursExclude(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"m"}},
+		{Name: "b", URL: "http://b", Models: []string{"m"}},
+	})
+	first, _, _ := p.Next("m")
+	second, _, err := p.Next("m", first)
+	if err != nil || second == first {
+		t.Fatalf("second = %v, err = %v", second, err)
+	}
+	if _, _, err := p.Next("m", first, second); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+}

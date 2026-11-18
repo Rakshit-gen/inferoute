@@ -94,11 +94,16 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 // has finished proxying to that backend (it decrements the in-flight count
 // the least_pending strategy reads; a no-op for the others). It returns an
 // error if no backend serves the model or all of them are currently
-// unhealthy.
-func (p *Pool) Next(model string) (*Backend, func(), error) {
+// unhealthy. Backends in exclude are not considered.
+func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error) {
 	candidates := p.byModel[model]
 	if len(candidates) == 0 {
 		return nil, nil, fmt.Errorf("%w: %q", ErrUnknownModel, model)
+	}
+	if len(exclude) > 0 {
+		candidates = slices.DeleteFunc(slices.Clone(candidates), func(b *Backend) bool {
+			return slices.Contains(exclude, b)
+		})
 	}
 
 	var b *Backend
