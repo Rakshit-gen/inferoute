@@ -109,6 +109,22 @@ export async function sendChat(
   let ttfbMs: number | null = null
   let buffer = ''
 
+  const readLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) return
+    const data = trimmed.slice(5).trim()
+    if (data === '[DONE]') return
+    try {
+      const delta = JSON.parse(data).choices?.[0]?.delta?.content
+      if (delta) {
+        content += delta
+        onProgress?.(content)
+      }
+    } catch {
+      /* ignore keep-alives and partial frames */
+    }
+  }
+
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
@@ -117,22 +133,9 @@ export async function sendChat(
     buffer += value
     const lines = buffer.split('\n')
     buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') continue
-      try {
-        const delta = JSON.parse(data).choices?.[0]?.delta?.content
-        if (delta) {
-          content += delta
-          onProgress?.(content)
-        }
-      } catch {
-        /* ignore keep-alives and partial frames */
-      }
-    }
+    lines.forEach(readLine)
   }
+  readLine(buffer)
 
   return {
     ...meta,
