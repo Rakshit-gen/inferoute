@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 )
@@ -105,5 +106,18 @@ func TestClientIP(t *testing.T) {
 		if got := ClientIP(r, trusted); got != tt.want {
 			t.Errorf("remote %s xff %q: got %s, want %s", tt.remote, tt.xff, got, tt.want)
 		}
+	}
+}
+
+func TestSweepRemovesOnlyRefilledBuckets(t *testing.T) {
+	l := New(1, 10)
+	l.Allow("k")
+	l.sweep(time.Now().Add(5 * time.Second))
+	if len(l.limiters) != 1 {
+		t.Fatal("a bucket still refilling must be kept")
+	}
+	l.sweep(time.Now().Add(11 * time.Second))
+	if len(l.limiters) != 0 {
+		t.Fatal("a refilled bucket must be removed")
 	}
 }

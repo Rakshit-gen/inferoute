@@ -32,10 +32,8 @@ func tokenInterval(requestsPerSecond float64) time.Duration {
 	return time.Duration(float64(time.Second) / requestsPerSecond)
 }
 
-// idleEvictAfter is how long a key's limiter survives with no traffic
-// before the sweep reclaims it, bounding map growth under IP churn or key
-// rotation.
-const idleEvictAfter = 30 * time.Minute
+// sweepInterval is how often idle limiters are reclaimed.
+const sweepInterval = time.Minute
 
 type entry struct {
 	limiter *rate.Limiter
@@ -77,17 +75,23 @@ func (l *Limiter) Allow(key string) bool {
 func (l *Limiter) RetryAfter() time.Duration { return tokenInterval(float64(l.rps)) }
 
 func (l *Limiter) sweepLoop() {
-	ticker := time.NewTicker(idleEvictAfter)
+	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		cutoff := time.Now().Add(-idleEvictAfter)
-		l.mu.Lock()
-		for key, e := range l.limiters {
-			if e.seen.Before(cutoff) {
-				delete(l.limiters, key)
-			}
+	for now := range ticker.C {
+		l.sweep(now)
+	}
+}
+
+// sweep removes limiters idle long enough to have refilled completely: a
+// full bucket behaves exactly like a newly created one.
+func (l *Limiter) sweep(now time.Time) {
+	cutoff := now.Add(-time.Duration(l.burst) * l.RetryAfter())
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for key, e := range l.limiters {
+		if e.seen.Before(cutoff) {
+			delete(l.limiters, key)
 		}
-		l.mu.Unlock()
 	}
 }
 
