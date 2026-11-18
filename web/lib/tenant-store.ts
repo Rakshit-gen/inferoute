@@ -53,6 +53,9 @@ async function saveTenant(data: TenantData): Promise<void> {
     throw new ValidationError('connections are too large to store; remove one or shorten its fields')
   }
   const { userId, orgId } = await tenantRef()
+  if (orgId && !(await auth()).has({ role: 'org:admin' })) {
+    throw new ValidationError('only organization admins can change connections', 403)
+  }
   const client = await clerkClient()
   // Clerk deep-merges metadata: only an explicit null removes the old value.
   const inferoute = { ...data, activeConnectionId: data.activeConnectionId ?? null }
