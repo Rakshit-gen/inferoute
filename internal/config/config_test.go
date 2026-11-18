@@ -114,3 +114,7 @@ func TestRejectsBadCache(t *testing.T) {
 	wantErr(t, `{"cache":{"enabled":true,"nucladb_addr":"n:1","embedding_backend_addr":"http://e","embedding_model":"m"},`+oneBackend+`}`, "nucladb_addr")
 	wantErr(t, `{"cache":{`+ok+`,"max_distance":3},`+oneBackend+`}`, "max_distance")
 }
+
+func TestRejectsDanglingAlias(t *testing.T) {
+	wantErr(t, `{"model_aliases":{"gpt-4":"nope"},`+oneBackend+`}`, "no backend serves")
+}

@@ -219,6 +219,18 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	served := make(map[string]bool)
+	for _, b := range cfg.Backends {
+		for _, m := range b.Models {
+			served[m] = true
+		}
+	}
+	for alias, target := range cfg.ModelAliases {
+		if !served[target] {
+			return nil, fmt.Errorf("config %s: model_aliases[%q] points at %q, which no backend serves", path, alias, target)
+		}
+	}
+
 	if cfg.RateLimit.Enabled {
 		if cfg.RateLimit.RequestsPerSecond <= 0 {
 			return nil, fmt.Errorf("config %s: rate_limit.requests_per_second must be positive", path)
