@@ -7,12 +7,12 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
 
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/apierr"
 )
 
@@ -89,8 +89,8 @@ func (l *Limiter) sweepLoop() {
 	}
 }
 
-// Middleware rejects requests over the per-key rate with 429. Callers with
-// no Authorization header share a limiter keyed by remote IP.
+// Middleware rejects requests over the per-key rate with 429. Callers the
+// API-key gate verified are limited per key; everyone else per remote IP.
 func Middleware(l Allower, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !l.Allow(keyFor(r)) {
@@ -104,11 +104,11 @@ func Middleware(l Allower, next http.Handler) http.Handler {
 }
 
 func keyFor(r *http.Request) string {
-	if auth := r.Header.Get("Authorization"); auth != "" {
-		return strings.TrimPrefix(auth, "Bearer ")
+	if id := apiauth.Identity(r.Context()); id != "" {
+		return "key:" + id
 	}
 	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return ip
+		return "ip:" + ip
 	}
-	return r.RemoteAddr
+	return "ip:" + r.RemoteAddr
 }

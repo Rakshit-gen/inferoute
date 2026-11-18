@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 )
 
 // requireRedis skips the test if no Redis is reachable at localhost:6379 —
@@ -30,9 +32,9 @@ func TestRedisLimiterAllowsThenRejectsBurst(t *testing.T) {
 	key := "test-key-" + time.Now().Format(time.RFC3339Nano)
 
 	l := NewRedis("localhost:6379", 1, 2)
-	handler := Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := apiauth.New([]string{key}).Middleware(Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}))
+	})))
 
 	req := func() *http.Request {
 		r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)

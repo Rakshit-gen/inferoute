@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 )
 
 func TestMiddlewareAllowsThenRejectsBurst(t *testing.T) {
@@ -35,11 +37,12 @@ func TestMiddlewareAllowsThenRejectsBurst(t *testing.T) {
 
 func TestMiddlewareIsolatesKeys(t *testing.T) {
 	l := New(1, 1)
-	handler := Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	keys := []string{"key-a", "key-b", "key-c"}
+	handler := apiauth.New(keys).Middleware(Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}))
+	})))
 
-	for _, key := range []string{"key-a", "key-b", "key-c"} {
+	for _, key := range keys {
 		r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 		r.Header.Set("Authorization", "Bearer "+key)
 		rec := httptest.NewRecorder()
@@ -58,5 +61,18 @@ func TestRejectionCarriesRetryAfter(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") != "10" {
 		t.Fatalf("status = %d, Retry-After = %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+}
+
+func TestUnverifiedTokensShareTheIPBucket(t *testing.T) {
+	h := Middleware(New(1, 1), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	for i, token := range []string{"Bearer a", "Bearer b"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", token)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if i == 1 && rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("rotating an unverified token bypassed the limit: %d", rec.Code)
+		}
 	}
 }
