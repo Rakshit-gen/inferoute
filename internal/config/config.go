@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -173,6 +174,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"
+	}
+	if _, _, err := net.SplitHostPort(cfg.ListenAddr); err != nil {
+		return nil, fmt.Errorf("config %s: listen_addr: %w", path, err)
 	}
 	if len(cfg.CORSOrigins) == 0 {
 		cfg.CORSOrigins = []string{"*"}

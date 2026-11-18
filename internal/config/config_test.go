@@ -99,3 +99,7 @@ func TestRejectsBadHealthCheck(t *testing.T) {
 	wantErr(t, `{"health_check_interval":"0s",`+oneBackend+`}`, "health_check_interval")
 	wantErr(t, `{"health_check_path":"healthz",`+oneBackend+`}`, "health_check_path")
 }
+
+func TestRejectsBadListenAddr(t *testing.T) {
+	wantErr(t, `{"listen_addr":"8081",`+oneBackend+`}`, "listen_addr")
+}
