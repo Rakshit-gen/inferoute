@@ -503,3 +503,12 @@ func TestRelaysLastUpstreamError(t *testing.T) {
 		t.Fatalf("status = %d, headers = %v, body = %s", rec.Code, rec.Header(), rec.Body)
 	}
 }
+
+func TestNotImplementedIsNotRetried(t *testing.T) {
+	calls := 0
+	h1 := func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(501) }
+	a, b := upstream(t, h1), upstream(t, h1)
+	if rec := post(New(testPool(t, config.Backend{Name: "a", URL: a, Models: []string{"m"}}, config.Backend{Name: "b", URL: b, Models: []string{"m"}})), modelBody); rec.Code != 501 || calls != 1 {
+		t.Fatalf("status = %d, calls = %d", rec.Code, calls)
+	}
+}

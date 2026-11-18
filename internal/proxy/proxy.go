@@ -291,6 +291,15 @@ type upstreamFailure struct {
 // maxFailureBody bounds how much of an error response is kept.
 const maxFailureBody = 64 << 10
 
+// retryable reports whether another backend might answer differently.
+func retryable(status int) bool {
+	switch status {
+	case http.StatusNotImplemented, http.StatusHTTPVersionNotSupported:
+		return false
+	}
+	return status >= 500 || status == http.StatusTooManyRequests
+}
+
 // forward sends the request to b and streams the response to w. Unless wrote
 // is set in the result, nothing has reached the client and the caller can
 // retry another backend. When tee is true, the response body (including an
@@ -314,7 +323,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+	if retryable(resp.StatusCode) {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxFailureBody))
 		return outcome{failure: &upstreamFailure{resp.StatusCode, resp.Header, errBody, b.Name}}
 	}
