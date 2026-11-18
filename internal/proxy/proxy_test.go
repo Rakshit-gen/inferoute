@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -439,5 +440,18 @@ func TestKeepsBackendBasePath(t *testing.T) {
 	post(New(testPool(t, config.Backend{Name: "a", URL: url + "/base", PathPrefix: "/openai", Models: []string{"m"}})), modelBody)
 	if got != "/base/openai/v1/chat/completions" {
 		t.Fatalf("path = %q", got)
+	}
+}
+
+func TestClientDisconnectLeavesBackendHealthy(t *testing.T) {
+	calls := 0
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { calls++ })
+	pool := testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(modelBody)).WithContext(ctx)
+	New(pool).ServeHTTP(httptest.NewRecorder(), req)
+	if !pool.Snapshot()[0].Healthy || calls != 0 {
+		t.Fatalf("healthy = %v, calls = %d", pool.Snapshot()[0].Healthy, calls)
 	}
 }

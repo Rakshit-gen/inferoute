@@ -174,13 +174,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		ok, status, captured, contentType := h.forward(w, r, b, body, cacheable)
+		res := h.forward(w, r, b, body, cacheable)
 		release()
-		if ok {
-			metrics.RequestsTotal.WithLabelValues(model, b.Name, strconv.Itoa(status)).Inc()
-			if cacheable && status == http.StatusOK && len(captured) > 0 {
-				go h.storeInCache(cacheKey, captured, contentType)
+		if res.wrote {
+			metrics.RequestsTotal.WithLabelValues(model, b.Name, strconv.Itoa(res.status)).Inc()
+			if cacheable && res.status == http.StatusOK && len(res.captured) > 0 {
+				go h.storeInCache(cacheKey, res.captured, res.contentType)
 			}
+			return
+		}
+		if r.Context().Err() != nil {
+			// The caller went away; that says nothing about the backend.
+			metrics.RequestsTotal.WithLabelValues(model, b.Name, "499").Inc()
 			return
 		}
 		lastErr = errors.New("backend " + b.Name + " failed")
@@ -240,21 +245,26 @@ func (h *Handler) storeInCache(key string, response []byte, contentType string) 
 	}
 }
 
-// forward sends the request to b and streams the response to w. It returns
-// ok=false (without having written a response) if the backend could not be
-// reached or returned a 5xx, so the caller can retry against another
-// backend. Once any bytes of a backend's response have been written to w,
-// failures are terminal — the caller already has an open HTTP response it
-// can't restart. When tee is true, the response body (including an SSE
-// stream, verbatim) is also returned in captured, along with the response's
-// content type, for the caller to cache.
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Backend, body []byte, tee bool) (ok bool, status int, captured []byte, contentType string) {
+// outcome reports what one attempt against a backend did.
+type outcome struct {
+	wrote       bool // a response was started, so no retry is possible
+	unreachable bool // no response was obtained from the backend
+	status      int
+	captured    []byte
+	contentType string
+}
+
+// forward sends the request to b and streams the response to w. Unless wrote
+// is set in the result, nothing has reached the client and the caller can
+// retry another backend. When tee is true, the response body (including an
+// SSE stream, verbatim) is also captured for the cache.
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Backend, body []byte, tee bool) outcome {
 	outURL := b.URL.JoinPath(b.PathPrefix, r.URL.EscapedPath())
 	outURL.RawQuery = r.URL.RawQuery
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, outURL.String(), bytes.NewReader(body))
 	if err != nil {
-		return false, 0, nil, ""
+		return outcome{unreachable: true}
 	}
 	req.Header = upstreamHeaders(r.Header)
 	if b.APIKey != "" {
@@ -263,12 +273,12 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 
 	resp, err := h.Client.Do(req)
 	if err != nil {
-		return false, 0, nil, ""
+		return outcome{unreachable: true}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 500 {
-		return false, 0, nil, ""
+		return outcome{}
 	}
 
 	ct := resp.Header.Get("Content-Type")
@@ -279,6 +289,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	// and dashboard surface it, and it pairs with X-Inferoute-Cache.
 	w.Header().Set("X-Inferoute-Backend", b.Name)
 	w.WriteHeader(resp.StatusCode)
+	res := outcome{wrote: true, status: resp.StatusCode}
 
 	flusher, canFlush := w.(http.Flusher)
 	rbuf := make([]byte, 4096)
@@ -286,7 +297,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 		n, readErr := resp.Body.Read(rbuf)
 		if n > 0 {
 			if _, err := w.Write(rbuf[:n]); err != nil {
-				return true, resp.StatusCode, nil, "" // client disconnected; nothing more to do
+				return res // client disconnected; nothing more to do
 			}
 			if tee {
 				buf.Write(rbuf[:n])
@@ -297,9 +308,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 		}
 		if readErr != nil {
 			if tee {
-				return true, resp.StatusCode, buf.Bytes(), ct
+				res.captured, res.contentType = buf.Bytes(), ct
 			}
-			return true, resp.StatusCode, nil, "" // io.EOF or a mid-stream error: response already started, can't retry
+			return res
 		}
 	}
 }
