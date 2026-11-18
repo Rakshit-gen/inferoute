@@ -98,8 +98,7 @@ func TestLeastPendingPrefersIdleBackend(t *testing.T) {
 		{Name: "idle", URL: "http://idle", Models: []string{"llama3"}},
 	}, LeastPending)
 
-	// byModel keeps spec order, so the first pick (all idle) is "busy".
-	// Hold that request open; the next pick must then go to "idle".
+	// Hold the first request open; the next pick must go to the other one.
 	b1, release1, err := p.Next("llama3")
 	if err != nil {
 		t.Fatalf("Next: %v", err)
@@ -163,5 +162,24 @@ func TestRoundRobinSurvivesCounterOverflow(t *testing.T) {
 		if _, _, err := p.Next("m"); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestLeastPendingSharesTies(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"m"}},
+		{Name: "b", URL: "http://b", Models: []string{"m"}},
+	}, LeastPending)
+	seen := map[string]int{}
+	for i := 0; i < 10; i++ {
+		b, release, err := p.Next("m")
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen[b.Name]++
+		release()
+	}
+	if seen["a"] != 5 || seen["b"] != 5 {
+		t.Fatalf("idle backends should share sequential traffic, got %v", seen)
 	}
 }

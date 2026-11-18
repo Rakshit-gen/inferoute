@@ -97,7 +97,7 @@ func (p *Pool) Next(model string) (*Backend, func(), error) {
 	var b *Backend
 	switch p.strategy {
 	case LeastPending:
-		b = pickLeastPending(candidates)
+		b = pickLeastPending(candidates, p.counters[model].Add(1))
 	case Weighted:
 		b = pickWeighted(candidates)
 	default:
@@ -125,10 +125,12 @@ func (p *Pool) pickRoundRobin(model string, candidates []*Backend) *Backend {
 	return nil
 }
 
-func pickLeastPending(candidates []*Backend) *Backend {
+// pickLeastPending scans from a rotating start so ties are shared evenly.
+func pickLeastPending(candidates []*Backend, start uint64) *Backend {
 	var best *Backend
 	var bestN int64
-	for _, b := range candidates {
+	for i := range candidates {
+		b := candidates[(start+uint64(i))%uint64(len(candidates))]
 		if !b.Healthy() {
 			continue
 		}
