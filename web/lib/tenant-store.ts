@@ -1,7 +1,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { auth, clerkClient } from '@clerk/nextjs/server'
-import { assertPublicGateway, gatewayUrl } from './guards'
+import { assertPublicGateway, gatewayUrl, ValidationError } from './guards'
 
 export interface Connection {
   id: string
@@ -78,7 +78,7 @@ export async function updateConnection(
 ): Promise<Connection> {
   const data = await loadTenant()
   const conn = data.connections.find((c) => c.id === id)
-  if (!conn) throw new Error('unknown connection')
+  if (!conn) throw new ValidationError('unknown connection', 404)
   if (patch.name !== undefined) conn.name = patch.name.trim() || conn.name
   if (patch.url !== undefined) {
     conn.url = gatewayUrl(patch.url)
@@ -100,7 +100,7 @@ export async function removeConnection(id: string): Promise<void> {
 
 export async function setActiveConnection(id: string): Promise<void> {
   const data = await loadTenant()
-  if (!data.connections.some((c) => c.id === id)) throw new Error('unknown connection')
+  if (!data.connections.some((c) => c.id === id)) throw new ValidationError('unknown connection', 404)
   data.activeConnectionId = id
   await saveTenant(data)
 }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { apiError } from '@/lib/gateway-proxy'
 import {
   removeConnection,
   setActiveConnection,
@@ -25,8 +26,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     await removeConnection(params.id)
     return json(200, { ok: true })
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(400, { error: e instanceof Error ? e.message : 'could not remove connection' })
+    return apiError(e, 'could not remove connection')
   }
 }
 
@@ -47,7 +47,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     })
     return json(200, publicConnection(conn))
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(400, { error: e instanceof Error ? e.message : 'could not update connection' })
+    return apiError(e, 'could not update connection')
   }
 }

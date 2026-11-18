@@ -1,12 +1,20 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { assertPublicGateway, readLimited } from './guards'
+import { assertPublicGateway, readLimited, ValidationError } from './guards'
 import { activeConnection, authFor, AuthError, type Connection } from './tenant-store'
 
 export const MAX_GATEWAY_RESPONSE = 8 << 20
 
 const json = (status: number, body: unknown) => NextResponse.json(body, { status })
+
+/** Turns a thrown error into a response that reveals nothing internal. */
+export function apiError(e: unknown, fallback: string, status = 500): Response {
+  if (e instanceof AuthError) return json(401, { error: 'sign in required' })
+  if (e instanceof ValidationError) return json(e.status, { error: e.message })
+  console.error(`${fallback}:`, e)
+  return json(status, { error: fallback })
+}
 
 /**
  * Runs `fn` with the caller's own active gateway connection. This is the
@@ -24,8 +32,7 @@ export async function withGateway(
     if (!conn) return json(409, { error: 'no gateway connected' })
     return await fn(conn)
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(502, { error: e instanceof Error ? e.message : 'gateway unreachable' })
+    return apiError(e, 'gateway unreachable', 502)
   }
 }
 

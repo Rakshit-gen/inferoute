@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { apiError } from '@/lib/gateway-proxy'
 import { addConnection, loadTenant, publicConnection, AuthError } from '@/lib/tenant-store'
 
 export const dynamic = 'force-dynamic'
@@ -20,20 +21,20 @@ export async function GET() {
       activeConnectionId: t.activeConnectionId ?? null,
     })
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(500, { error: 'could not load connections' })
+    return apiError(e, 'could not load connections')
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     await guard()
-    const { name, url, apiKey } = await req.json()
+    const body = await req.json().catch(() => null)
+    if (!body || typeof body !== 'object') return json(400, { error: 'expected a JSON object' })
+    const { name, url, apiKey } = body
     if (typeof url !== 'string' || !url.trim()) return json(400, { error: 'url is required' })
     const conn = await addConnection({ name: String(name ?? ''), url, apiKey: apiKey ? String(apiKey) : undefined })
     return json(201, publicConnection(conn))
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(400, { error: e instanceof Error ? e.message : 'could not add connection' })
+    return apiError(e, 'could not add connection')
   }
 }

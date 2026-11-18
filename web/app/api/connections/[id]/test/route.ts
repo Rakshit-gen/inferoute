@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { gatewayFetch, MAX_GATEWAY_RESPONSE } from '@/lib/gateway-proxy'
-import { readLimited } from '@/lib/guards'
+import { apiError, gatewayFetch, MAX_GATEWAY_RESPONSE } from '@/lib/gateway-proxy'
+import { readLimited, ValidationError } from '@/lib/guards'
 import { getConnection, AuthError } from '@/lib/tenant-store'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     } catch (e) {
       return json(200, {
         reachable: false,
-        error: e instanceof Error ? e.message : 'could not connect',
+        error: e instanceof ValidationError ? e.message : 'could not connect',
       })
     }
 
@@ -41,7 +41,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       .catch(() => null)
     return json(200, { reachable: true, authOk: true, status: 200, latencyMs, config })
   } catch (e) {
-    if (e instanceof AuthError) return json(401, { error: 'sign in required' })
-    return json(500, { error: 'probe failed' })
+    return apiError(e, 'probe failed')
   }
 }
