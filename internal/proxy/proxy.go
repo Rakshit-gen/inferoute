@@ -341,6 +341,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	if b.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+b.APIKey)
 	}
+	if tee {
+		req.Header.Set("Accept-Encoding", "identity") // cached bytes must be replayable to anyone
+	}
 
 	resp, err := h.Client.Do(req)
 	if err != nil {
@@ -354,6 +357,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	}
 
 	ct := resp.Header.Get("Content-Type")
+	tee = tee && resp.Header.Get("Content-Encoding") == ""
 	var buf bytes.Buffer
 
 	copyResponseHeaders(w.Header(), resp.Header)
