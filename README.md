@@ -1,6 +1,5 @@
 # inferoute
 
-[![CI](https://github.com/Rakshit-gen/inferoute/actions/workflows/ci.yml/badge.svg)](https://github.com/Rakshit-gen/inferoute/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An OpenAI-compatible inference gateway written in Go: it round-robins
@@ -91,7 +90,8 @@ which of the two instances handled it:
 
 Run it a few more times and kill one `ollama serve` process: the next
 request fails over to the survivor instead of erroring. `/metrics` serves
-Prometheus metrics, `/healthz` is a liveness probe, `/v1/models` lists the
+Prometheus metrics, `/healthz` is a liveness probe, `/readyz` answers 503
+while no backend can take traffic, `/v1/models` lists the
 served models (OpenAI shape, for SDKs), `/v1/backends` reports each
 backend's name, models, and current health, `/v1/config` reports the model
 aliases and which features are enabled, and `/docs` serves a full
@@ -150,10 +150,11 @@ Free-tier services spin down after 15 minutes of inactivity and take
 
 ## CLI
 
-The binary is `inferouted`, and it has exactly one flag:
+The binary is `inferouted`:
 
 ```sh
 ./bin/inferouted -config path/to/config.json   # defaults to ./config.json
+./bin/inferouted -config path/to/config.json -check   # validates and exits
 ./bin/inferouted -h                            # prints usage and exits
 ```
 
@@ -190,8 +191,15 @@ one). Plain-English rundown of each section:
 | `cache.max_distance` | How close a cached prompt has to be to count as a hit — see the note below, the naming here is easy to get backwards. |
 | `cache.tenant_id` | The NuclaDB tenant inferoute's cache vectors are stored under. |
 | `model_aliases` | Maps a requested model name to the one your backends actually serve, e.g. `{"gpt-4": "llama3"}` routes `gpt-4` requests to whatever backend lists `llama3`. Empty by default (no aliasing). |
-| `cors_origins` | Browser origins allowed to call the HTTP API (the `web/` dashboard, and the playground's `POST /v1/chat/completions`). A single `["*"]` allows any origin; otherwise list each exactly. Defaults to `["*"]`. Non-browser clients send no `Origin` and are unaffected. |
-| `api_keys` | Allowlist of bearer tokens accepted on `POST /v1/chat/completions`. When non-empty, any request without a listed `Authorization: Bearer <key>` gets `401`. Empty (the default) leaves the proxy open. Reloaded on `SIGHUP`. Introspection (`/v1/backends`, `/v1/config`, `/metrics`) is not gated — firewall it or put a reverse proxy in front if it needs protecting. |
+| `cors_origins` | Browser origins allowed to call the HTTP API directly. `["*"]` allows any origin; otherwise list each exactly. Empty by default, which allows none. The `web/` dashboard calls gateways from its server and does not need an entry. Non-browser clients send no `Origin` and are unaffected. |
+| `api_keys` | Allowlist of bearer tokens. When non-empty, every `/v1/*` route and `/metrics` require a listed `Authorization: Bearer <key>` and answer `401` otherwise. `/healthz`, `/readyz` and `/docs` stay public. Empty (the default) leaves the gateway open. Values may use `${VAR}`. Reloaded on `SIGHUP`. |
+| `trusted_proxies` | CIDR ranges of proxies whose `X-Forwarded-For` is believed when identifying a client. Empty by default, so the header is ignored. |
+| `max_request_body_bytes` | Largest accepted request body. Defaults to 16 MiB. |
+| `max_concurrent_requests` | Requests handled at once before the gateway answers `503` with `Retry-After`. Defaults to 1024; `0` disables the limit. |
+| `upstream_timeout` | How long to wait for a backend's response headers, which for a non-streaming request is the whole generation. Defaults to `5m`. |
+| `stream_idle_timeout` | Longest allowed gap between response chunks. Defaults to `2m`. |
+| `shutdown_timeout` | How long running requests get to finish after `SIGTERM`. Defaults to `30s`. |
+| `cache.ttl`, `cache.lookup_timeout` | How long an entry may be served (default `24h`, `0s` keeps it indefinitely) and the limit on the lookup made before each request (default `2s`). |
 
 Every field has a sane default except `backends`, which is required.
 
@@ -199,8 +207,11 @@ Every field has a sane default except `backends`, which is required.
 
 - **Routing + failover**: reads `model` from the request body (resolved
   through `model_aliases` first, if configured), picks a healthy backend
-  registered for it, and retries the next one on a connection error or 5xx
-  (up to 3 attempts, marking the failed backend unhealthy).
+  registered for it, and retries a different one on a connection error, 5xx
+  or 429 (up to 3 attempts). A connection failure takes the backend out for
+  15 seconds and three 5xx responses in a row do the same. A 429 or a client
+  disconnect never counts against it. If a stream breaks after it has started,
+  the client connection is aborted so the truncation is visible.
 - **Load balancing** (`load_balancing` in config): how the healthy backends
   for a model share traffic.
   - `round_robin` (default): even rotation. Best when every backend is the
@@ -222,22 +233,28 @@ Every field has a sane default except `backends`, which is required.
   limit. In-process by default; set `rate_limit.redis_addr` to share the
   limit across multiple inferoute instances behind a load balancer instead.
 - **API-key auth** (`api_keys` in config): an allowlist of bearer tokens.
-  Non-empty means `POST /v1/chat/completions` requires a listed key (401
-  otherwise); empty leaves the proxy open. Reloaded on `SIGHUP`.
+  Non-empty means `/v1/*` and `/metrics` require a listed key (401
+  otherwise); empty leaves the gateway open. Reloaded on `SIGHUP`.
 - **Semantic caching** (`cache` in config): chat requests — streaming
   included — are embedded (via an Ollama-compatible `/api/embeddings`
   endpoint), looked up in NuclaDB, and served from cache on a close match; a
   cached streaming response is replayed as the exact bytes originally
-  captured. Misses are stored after the backend responds.
-- **Config hot-reload**: `SIGHUP` reloads `backends` and `model_aliases`
-  from the config file without dropping in-flight requests or restarting
+  captured. Misses are stored after the backend responds. Entries are private
+  to the caller, specific to the model and parameters, and expire after
+  `cache.ttl`. `Cache-Control: no-store` or `no-cache` skips the cache.
+- **Config hot-reload**: `SIGHUP` reloads `backends`, `load_balancing`,
+  `model_aliases`, `api_keys` and the health-check settings from the config file without dropping in-flight requests or restarting
   the process.
 - **Introspection**: `/v1/models` (OpenAI-compatible model list),
   `/v1/backends` (every backend's name, URL, models, health), and
   `/v1/config` (aliases and which features are on).
 - **Metrics** (`/metrics`): request count by model/backend/status, request
-  latency histogram by model, cache hit/miss/error counts. Point Prometheus
-  or Grafana at it.
+  latency histogram by model, backend health and in-flight requests, failovers,
+  rejected requests, and cache lookups and writes. Point Prometheus or Grafana
+  at it.
+- **Operations**: JSON logs with one access-log line per request, an
+  `X-Request-Id` on every response that is also sent to the backend, graceful
+  shutdown, and load shedding at `max_concurrent_requests`.
 
 ## Benchmarks
 
@@ -307,6 +324,22 @@ the proto docs:
   NuclaDB instance and checking the actual scores returned, not by
   reasoning about it from the proto file.
 
+## Upgrading
+
+These defaults changed and can affect an existing deployment:
+
+- With `api_keys` set, `/v1/models`, `/v1/backends`, `/v1/config` and `/metrics`
+  now need a key. Give Prometheus one through `authorization` in its scrape config.
+- `cors_origins` now defaults to no origins. List the ones you need.
+- Unknown config fields are rejected at startup. Run `inferouted -check` first.
+- When every backend fails, the client gets the last backend's real status and
+  body instead of a generic `502`.
+- Semantic cache entries are now separated by caller, model and parameters, so
+  entries written by older versions no longer match.
+- The dashboard refuses private gateway addresses in production unless
+  `ALLOW_PRIVATE_GATEWAYS=true`, and only `org:admin` can change an
+  organization's connections.
+
 ## Status
 
 Working end-to-end, verified against real binaries (not just unit tests):
@@ -317,11 +350,10 @@ semantic caching — including caching a streaming response and replaying it
 on a hit — with real cache-hit/cache-miss behavior confirmed against a live
 NuclaDB instance and real Redis, not fakes.
 
-Not yet built: batched/async cache writes at scale, cache eviction/TTL (a
-long-running gateway's cache tenant grows forever), true latency-aware
-routing (`least_pending` approximates it), a circuit breaker for flaky (as
-opposed to fully down) backends, and TLS termination (put it behind a
-reverse proxy for that today).
+Not yet built: deleting expired cache entries (they stop being served after
+`cache.ttl` but stay in NuclaDB until overwritten), true latency-aware routing
+(`least_pending` approximates it), and TLS termination (put it behind a reverse
+proxy for that today).
 
 See tests in `internal/backend`, `internal/proxy`, `internal/cache`, and
 `internal/ratelimit` for the behavior that's actually verified.
