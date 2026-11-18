@@ -149,22 +149,22 @@ const configFields: [string, React.ReactNode][] = [
   ],
   [
     'cors_origins',
-    'Browser origins allowed to call the HTTP API directly. ["*"] allows any origin and is the default. Non-browser clients send no Origin header and are never affected.',
+    'Browser origins allowed to call the HTTP API directly. ["*"] allows any origin. Empty, the default, allows none. Non-browser clients send no Origin header and are never affected.',
   ],
   [
     'api_keys',
-    'An allowlist of bearer tokens for POST /v1/chat/completions. When the list is non-empty, a request without a listed "Authorization: Bearer <key>" gets HTTP 401. Empty (the default) leaves the proxy open. Reloaded on SIGHUP. The read-only endpoints are not gated by this.',
+    'An allowlist of bearer tokens. When the list is non-empty, every /v1 route and /metrics require a listed "Authorization: Bearer <key>" and answer HTTP 401 otherwise. /healthz, /readyz and /docs stay public. Empty (the default) leaves the gateway open. Reloaded on SIGHUP.',
   ],
 ]
 
 const endpoints: [string, React.ReactNode][] = [
   [
     'POST /v1/chat/completions',
-    'The proxy itself. Reads "model" from the JSON body, resolves aliases, checks the cache when enabled, picks a healthy backend, and streams the response straight back. Returns 400 if the body is not JSON with a "model" field, 429 if rate limited, 401 if an API key is required and missing, 503 if no backend serves that model, 502 if every attempt failed.',
+    'The proxy itself. Reads "model" from the JSON body, resolves aliases, checks the cache when enabled, picks a healthy backend, and streams the response straight back. Returns 400 if the body is not JSON with a "model" field, 401 if an API key is required and missing, 404 if no backend serves that model, 429 if rate limited, 503 if no backend is available or the gateway is at capacity. If every attempt fails, the last backend\'s status and body are returned, or 502 if none answered.',
   ],
   [
     'GET /v1/models',
-    'An OpenAI-compatible model list: every model a backend serves plus every alias clients can ask for. SDKs call this to fill a model picker. Not gated by api_keys.',
+    'An OpenAI-compatible model list: every model a backend serves plus every alias clients can ask for. SDKs call this to fill a model picker.',
   ],
   ['GET /v1/backends', 'A JSON array of every backend with its name, url, models, and current health.'],
   [
@@ -176,6 +176,7 @@ const endpoints: [string, React.ReactNode][] = [
     'Prometheus text format: request counts and latency by model and backend, and cache hit / miss / error counts.',
   ],
   ['GET /healthz', 'A liveness probe for load balancers and orchestrators. Always 200 while the process is running.'],
+  ['GET /readyz', 'A readiness probe. Returns 503 while no backend can take traffic.'],
   ['GET /docs', "inferoute's own documentation page, served straight from the binary."],
 ]
 
@@ -390,14 +391,14 @@ inferouted -config config.example.json`}</Pre>
     "tenant_id": "inferoute-cache"
   },
   "model_aliases": {},
-  "cors_origins": ["*"],
+  "cors_origins": [],
   "api_keys": []
 }`}</Pre>
       <DefList items={configFields} />
 
       <H2 id="api">HTTP API reference</H2>
       <P>
-        Six endpoints. One does the proxying, the rest are read-only introspection used by tools and
+        One endpoint does the proxying, the rest are read-only introspection used by tools and
         by this dashboard.
       </P>
       <DefList items={endpoints} />
@@ -413,7 +414,7 @@ inferouted -config config.example.json`}</Pre>
       <H2 id="reload">Changing config without downtime</H2>
       <P>
         Sending the process a <Code>SIGHUP</Code> reloads the <Code>backends</Code>,{' '}
-        <Code>load_balancing</Code>, <Code>model_aliases</Code>, and <Code>api_keys</Code> sections
+        <Code>load_balancing</Code>, <Code>model_aliases</Code>, <Code>api_keys</Code>, and health-check settings
         from the same file, with no restart and no dropped in-flight requests. This is how you add or
         drain a backend, or switch strategy, in production.
       </P>
@@ -505,6 +506,14 @@ inferouted -config config.example.json`}</Pre>
       <DefList
         items={[
           [
+            'inferoute_backend_up, inferoute_backend_inflight_requests',
+            'Per-backend gauges read at scrape time: whether it can take traffic, and how many requests it is handling.',
+          ],
+          [
+            'inferoute_failovers_total, inferoute_rejected_requests_total, inferoute_cache_writes_total',
+            'Failed backend attempts, requests refused by reason (unauthorized, rate_limited, overloaded), and cache write outcomes.',
+          ],
+          [
             'inferoute_requests_total{model, backend, status}',
             'A counter of every proxied request. "backend" is the server name, or "cache" on a cache hit, or "none" when no backend could be reached. "status" is the HTTP status returned to the caller.',
           ],
@@ -545,9 +554,9 @@ inferouted -config config.example.json`}</Pre>
           load balancer for HTTPS.
         </li>
         <li>
-          The read-only endpoints (<Code>/v1/backends</Code>, <Code>/v1/config</Code>,{' '}
-          <Code>/metrics</Code>) are not behind <Code>api_keys</Code>. If they should not be public,
-          firewall them or keep them on an internal network.
+          Without <Code>api_keys</Code>, every endpoint is open, including{' '}
+          <Code>/v1/backends</Code>, <Code>/v1/config</Code>, and <Code>/metrics</Code>. Set keys before
+          exposing a gateway. Prometheus then needs a key in its scrape config.
         </li>
       </ul>
 
@@ -565,7 +574,9 @@ inferouted -config config.example.json`}</Pre>
           <span className="text-ink">Add a connection.</span> On the{' '}
           <Link href="/connections" className="text-route hover:underline">Connections</Link> page,
           enter your gateway&apos;s base URL and, if it has an <Code>api_keys</Code> allowlist, a key.
-          The key is stored server-side and never sent to the browser.
+          The key is stored server-side and never sent to the browser. In production, private
+          network addresses are refused unless the dashboard sets{' '}
+          <Code>ALLOW_PRIVATE_GATEWAYS=true</Code>.
         </li>
         <li>
           <span className="text-ink">Watch it.</span> The Dashboard and Playground read from your
@@ -585,8 +596,8 @@ inferouted -config config.example.json`}</Pre>
       <ul className="mt-3 space-y-2 text-sm text-ink-dim">
         <li>Load balancing is round_robin, least_pending, or weighted. There is no true latency-aware routing (least_pending approximates it by in-flight count).</li>
         <li>
-          A backend is either healthy or not. There is no circuit breaker for a server that is up but
-          flaky.
+          Flaky backends are only handled coarsely: three 5xx responses in a row remove one for 15
+          seconds. There is no error-rate based circuit breaker.
         </li>
         <li>
           The cache has no eviction or TTL. A long-running gateway&apos;s cache tenant grows forever,
