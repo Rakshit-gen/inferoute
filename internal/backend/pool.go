@@ -117,7 +117,7 @@ func (p *Pool) Next(model string) (*Backend, func(), error) {
 func (p *Pool) pickRoundRobin(model string, candidates []*Backend) *Backend {
 	start := p.counters[model].Add(1)
 	for i := 0; i < len(candidates); i++ {
-		b := candidates[(int(start)+i)%len(candidates)]
+		b := candidates[(start+uint64(i))%uint64(len(candidates))]
 		if b.Healthy() {
 			return b
 		}

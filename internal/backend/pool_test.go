@@ -152,3 +152,16 @@ func TestModelsSortedUnique(t *testing.T) {
 		t.Fatalf("Models() = %v, want %v", got, want)
 	}
 }
+
+func TestRoundRobinSurvivesCounterOverflow(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"m"}},
+		{Name: "b", URL: "http://b", Models: []string{"m"}},
+	})
+	p.counters["m"].Store(^uint64(0) - 1)
+	for i := 0; i < 4; i++ {
+		if _, _, err := p.Next("m"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
