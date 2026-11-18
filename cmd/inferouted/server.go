@@ -35,7 +35,7 @@ type app struct {
 func (a *app) routes() http.Handler {
 	v1 := http.NewServeMux()
 	v1.Handle("/v1/", a.proxied)
-	v1.HandleFunc("/v1/backends", a.backends)
+	v1.HandleFunc("GET /v1/backends", a.backends)
 	v1.HandleFunc("GET /v1/config", a.config)
 	v1.HandleFunc("GET /v1/models", a.models)
 	v1.Handle("/metrics", promhttp.Handler())

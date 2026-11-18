@@ -156,3 +156,12 @@ func TestReloadKeepsRunningConfigOnError(t *testing.T) {
 		t.Fatal("the old pool must stay active")
 	}
 }
+
+func TestBackendsIsReadOnly(t *testing.T) {
+	req := httptest.NewRequest(http.MethodDelete, "/v1/backends", nil)
+	rec := httptest.NewRecorder()
+	testApp(t).routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
