@@ -1,2 +1,7 @@
 bin/
 .git/
+web/
+config.json
+.env
+.env.*
+*.pem
