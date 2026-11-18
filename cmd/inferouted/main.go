@@ -109,7 +109,7 @@ func main() {
 		log.Fatalf("inferouted: %v", err)
 	}
 	log.Printf("inferouted: listening on %s, routing to %d backend(s)", ln.Addr(), len(cfg.Backends))
-	srv := newServer(withCORS(a.routes(), cfg.CORSOrigins))
+	srv := newServer(withSecurityHeaders(withCORS(a.routes(), cfg.CORSOrigins)))
 	if err := serve(ctx, srv, ln, time.Duration(cfg.ShutdownTimeout), h.Drain); err != nil {
 		log.Fatalf("inferouted: %v", err)
 	}

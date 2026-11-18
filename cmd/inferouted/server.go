@@ -185,3 +185,10 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, grace time.Du
 	<-done
 	return nil
 }
+
+func withSecurityHeaders(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		h.ServeHTTP(w, r)
+	})
+}
