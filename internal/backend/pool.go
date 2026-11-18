@@ -70,12 +70,12 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 			p.all = append(p.all, b)
 		}
 		for _, m := range s.Models {
-			p.byModel[m] = append(p.byModel[m], b)
 			if p.counters[m] == nil {
 				p.counters[m] = new(atomic.Uint64)
 			}
 			if !slices.Contains(b.Models, m) {
 				b.Models = append(b.Models, m)
+				p.byModel[m] = append(p.byModel[m], b)
 			}
 		}
 	}

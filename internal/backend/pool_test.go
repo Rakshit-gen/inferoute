@@ -183,3 +183,13 @@ func TestLeastPendingSharesTies(t *testing.T) {
 		t.Fatalf("idle backends should share sequential traffic, got %v", seen)
 	}
 }
+
+func TestRepeatedBackendIsNotDoubleCounted(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"m"}},
+		{Name: "a", URL: "http://a", Models: []string{"m", "n"}},
+	})
+	if len(p.byModel["m"]) != 1 || len(p.byModel["n"]) != 1 {
+		t.Fatalf("byModel = %v", p.byModel)
+	}
+}
