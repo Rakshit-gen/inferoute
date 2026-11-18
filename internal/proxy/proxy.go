@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -190,6 +191,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	apierr.Write(w, http.StatusBadGateway, apierr.Server, "all_backends_failed", "all backends failed: "+lastErr.Error())
 }
 
+// hopHeaders apply to a single connection and are never forwarded.
+var hopHeaders = []string{
+	"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate",
+	"Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade",
+}
+
+// stripHop removes hop-by-hop headers, including any Connection nominates.
+func stripHop(h http.Header) {
+	for _, v := range h.Values("Connection") {
+		for _, name := range strings.Split(v, ",") {
+			h.Del(strings.TrimSpace(name))
+		}
+	}
+	for _, name := range hopHeaders {
+		h.Del(name)
+	}
+}
+
+// upstreamHeaders returns the client's headers as sent to a backend.
+func upstreamHeaders(in http.Header) http.Header {
+	out := in.Clone()
+	stripHop(out)
+	return out
+}
+
 func (h *Handler) storeInCache(key string, response []byte, contentType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -215,7 +241,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	if err != nil {
 		return false, 0, nil, ""
 	}
-	req.Header = r.Header.Clone()
+	req.Header = upstreamHeaders(r.Header)
 	if b.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+b.APIKey)
 	}

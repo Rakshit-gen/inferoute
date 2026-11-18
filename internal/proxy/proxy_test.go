@@ -403,3 +403,11 @@ func TestUnknownModelDoesNotCreateMetricSeries(t *testing.T) {
 		}
 	}
 }
+
+func TestUpstreamHeadersDropHopByHop(t *testing.T) {
+	in := http.Header{"Connection": {"close, X-Private"}, "X-Private": {"1"}, "Proxy-Authorization": {"p"}, "X-Keep": {"1"}}
+	out := upstreamHeaders(in)
+	if out.Get("X-Private") != "" || out.Get("Proxy-Authorization") != "" || out.Get("Connection") != "" || out.Get("X-Keep") != "1" {
+		t.Fatalf("headers = %v", out)
+	}
+}
