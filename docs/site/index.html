@@ -247,14 +247,16 @@ inferouted: listening on :8081, routing to 2 backend(s)</code></pre>
 
     <section id="cli">
       <h2>CLI</h2>
-      <p>The binary is <code>inferouted</code>, and it has exactly one flag:</p>
+      <p>The binary is <code>inferouted</code>:</p>
       <pre><code>$ inferouted -config path/to/config.json   <span class="dim"># defaults to ./config.json</span>
+$ inferouted -config path/to/config.json -check   <span class="dim"># validates and exits</span>
 $ inferouted -h                            <span class="dim"># prints usage and exits</span></code></pre>
       <p>
         No subcommands, no interactive mode: it's a daemon. Point it at a
         config file, it starts listening, <code>Ctrl-C</code> (or
         <code>SIGTERM</code>) shuts it down cleanly. A <code>SIGHUP</code>
-        reloads <code>backends</code> and <code>model_aliases</code> from
+        reloads <code>backends</code>, <code>load_balancing</code>,
+        <code>model_aliases</code>, <code>api_keys</code> and the health-check settings from
         the same file without restarting or dropping in-flight requests:
       </p>
       <pre><code>$ kill -HUP $(pgrep inferouted)</code></pre>
@@ -288,7 +290,7 @@ $ inferouted -h                            <span class="dim"># prints usage and 
 
     <section id="endpoints">
       <h2>Endpoints</h2>
-      <p>Everything inferoute itself serves, beyond the proxied <code>/v1/*</code> routes:</p>
+      <p>Everything inferoute itself serves, beyond the proxied <code>/v1/*</code> routes. When <code>api_keys</code> is set, <code>/v1/*</code> and <code>/metrics</code> require a key:</p>
       <table>
         <tr><th>Route</th><th>What it does</th></tr>
         <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend: same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
@@ -296,7 +298,8 @@ $ inferouted -h                            <span class="dim"># prints usage and 
         <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, models, and current health.</td></tr>
         <tr><td><code>GET /v1/config</code></td><td>Active model aliases, health-check interval, and whether rate limiting, caching, and API-key auth are on.</td></tr>
         <tr><td><code>GET /healthz</code></td><td>Liveness probe: always 200 once the process is up.</td></tr>
-        <tr><td><code>GET /metrics</code></td><td>Prometheus: request count by model/backend/status, latency histogram, cache hit/miss/error counts.</td></tr>
+        <tr><td><code>GET /readyz</code></td><td>Readiness probe: 503 while no backend can take traffic.</td></tr>
+        <tr><td><code>GET /metrics</code></td><td>Prometheus: request counts, latency, backend health and in-flight requests, failovers, rejections, cache lookups and writes.</td></tr>
         <tr><td><code>GET /docs</code></td><td>This page, served straight from the running binary.</td></tr>
       </table>
     </section>
