@@ -37,6 +37,8 @@ type Backend struct {
 	APIKey     string
 	Models     []string
 	Weight     int
+	// MaxConcurrent caps in-flight requests; 0 means no cap.
+	MaxConcurrent int
 
 	healthy  atomic.Bool
 	inflight atomic.Int64 // requests currently being proxied (least_pending)
@@ -81,7 +83,7 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 		}
 		b, ok := seen[s.Name]
 		if !ok {
-			b = &Backend{Name: s.Name, URL: u, PathPrefix: s.PathPrefix, APIKey: s.APIKey, Weight: s.Weight}
+			b = &Backend{Name: s.Name, URL: u, PathPrefix: s.PathPrefix, APIKey: s.APIKey, Weight: s.Weight, MaxConcurrent: s.MaxConcurrent}
 			b.healthy.Store(true) // assume healthy until the first check
 			seen[s.Name] = b
 			p.all = append(p.all, b)
@@ -101,8 +103,8 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 
 // Next returns a healthy backend serving model, chosen by the pool's
 // load-balancing strategy, plus a release func the caller must call once it
-// has finished proxying to that backend (it decrements the in-flight count
-// the least_pending strategy reads; a no-op for the others). It returns an
+// has finished proxying to that backend, which frees its in-flight slot. It
+// returns an
 // error if no backend serves the model or all of them are currently
 // unhealthy. Backends in exclude are not considered.
 func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error) {
@@ -116,24 +118,34 @@ func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error)
 		})
 	}
 
-	var b *Backend
-	switch p.strategy {
-	case LeastPending:
-		b = pickLeastPending(candidates, p.counters[model].Add(1))
-	case Weighted:
-		b = pickWeighted(candidates)
-	default:
-		b = p.pickRoundRobin(model, candidates)
+	for {
+		var b *Backend
+		switch p.strategy {
+		case LeastPending:
+			b = pickLeastPending(candidates, p.counters[model].Add(1))
+		case Weighted:
+			b = pickWeighted(candidates)
+		default:
+			b = p.pickRoundRobin(model, candidates)
+		}
+		if b == nil {
+			return nil, nil, fmt.Errorf("%w: %q", ErrUnavailable, model)
+		}
+		if b.acquire() {
+			return b, func() { b.inflight.Add(-1) }, nil
+		}
+		candidates = slices.DeleteFunc(slices.Clone(candidates), func(c *Backend) bool { return c == b })
 	}
-	if b == nil {
-		return nil, nil, fmt.Errorf("%w: %q", ErrUnavailable, model)
-	}
+}
 
-	if p.strategy == LeastPending {
-		b.inflight.Add(1)
-		return b, func() { b.inflight.Add(-1) }, nil
+// acquire reserves an in-flight slot, failing if b is at MaxConcurrent.
+func (b *Backend) acquire() bool {
+	n := b.inflight.Add(1)
+	if b.MaxConcurrent > 0 && n > int64(b.MaxConcurrent) {
+		b.inflight.Add(-1)
+		return false
 	}
-	return b, func() {}, nil
+	return true
 }
 
 func (p *Pool) pickRoundRobin(model string, candidates []*Backend) *Backend {

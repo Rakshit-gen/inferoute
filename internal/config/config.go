@@ -32,6 +32,9 @@ type Backend struct {
 	// Weight biases the "weighted" load-balancing strategy toward beefier
 	// backends. Ignored by the other strategies. Missing or <=0 means 1.
 	Weight int `json:"weight"`
+	// MaxConcurrent caps requests in flight to this backend; when it is full
+	// the request goes to another one. 0 means no cap.
+	MaxConcurrent int `json:"max_concurrent"`
 }
 
 // Duration is a time.Duration written in config as a string such as "10s".
@@ -214,6 +217,9 @@ func Load(path string) (*Config, error) {
 		}
 		if b.Weight < 0 {
 			return nil, fmt.Errorf("config %s: backend %s weight must not be negative", path, b.Name)
+		}
+		if b.MaxConcurrent < 0 {
+			return nil, fmt.Errorf("config %s: backend %s max_concurrent must not be negative", path, b.Name)
 		}
 	}
 

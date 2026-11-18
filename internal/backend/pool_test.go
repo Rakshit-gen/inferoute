@@ -248,3 +248,25 @@ func TestConsecutiveFailuresEject(t *testing.T) {
 		t.Fatal("three consecutive failures must eject")
 	}
 }
+
+func TestMaxConcurrentSpillsToOtherBackend(t *testing.T) {
+	p := mustPool(t, []config.Backend{
+		{Name: "a", URL: "http://a", Models: []string{"m"}, MaxConcurrent: 1},
+		{Name: "b", URL: "http://b", Models: []string{"m"}, MaxConcurrent: 1},
+	})
+	first, release, err := p.Next("m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := p.Next("m")
+	if err != nil || second == first {
+		t.Fatalf("second = %v, err = %v", second, err)
+	}
+	if _, _, err := p.Next("m"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable when all are full", err)
+	}
+	release()
+	if _, _, err := p.Next("m"); err != nil {
+		t.Fatalf("a released slot should be usable: %v", err)
+	}
+}
