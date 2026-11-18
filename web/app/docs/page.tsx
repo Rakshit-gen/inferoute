@@ -337,7 +337,7 @@ curl -O https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/config.exam
 inferouted -config config.example.json`}</Pre>
       <P>
         Or build from source with <Code>go build -o bin/inferouted ./cmd/inferouted</Code>. The
-        binary takes exactly one flag, <Code>-config</Code>, and defaults to <Code>./config.json</Code>.
+        binary takes <Code>-config</Code>, which defaults to <Code>./config.json</Code>, and <Code>-check</Code>, which validates the file and exits.
       </P>
       <P>
         No GPUs to hand? <Code>./scripts/local-stack.sh</Code> in the repo builds and runs the
