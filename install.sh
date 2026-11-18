@@ -8,6 +8,7 @@
 # resolves to the latest commit on the default branch without one.
 set -eu
 
+main() {
 if ! command -v go >/dev/null 2>&1; then
   echo "inferouted needs the Go toolchain to install (go install under the hood)." >&2
   echo "Install Go from https://go.dev/dl/, then re-run this script." >&2
@@ -41,3 +42,6 @@ case ":$PATH:" in
     ;;
 esac
 echo "Then: curl -O https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/config.example.json && inferouted -config config.example.json"
+}
+
+main "$@"
