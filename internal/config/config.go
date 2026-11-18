@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -129,6 +130,12 @@ func Load(path string) (*Config, error) {
 	for i, b := range cfg.Backends {
 		if b.Name == "" || b.URL == "" || len(b.Models) == 0 {
 			return nil, fmt.Errorf("config %s: backends[%d] missing name, url, or models", path, i)
+		}
+	}
+
+	for i, k := range cfg.APIKeys {
+		if strings.TrimSpace(k) == "" {
+			return nil, fmt.Errorf("config %s: api_keys[%d] is empty", path, i)
 		}
 	}
 

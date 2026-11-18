@@ -55,3 +55,7 @@ func TestBackendErrorOmitsAPIKey(t *testing.T) {
 		t.Fatalf("error must exist and omit the key, got %v", err)
 	}
 }
+
+func TestRejectsEmptyAPIKey(t *testing.T) {
+	wantErr(t, `{"api_keys":[""],`+oneBackend+`}`, "api_keys[0]")
+}
