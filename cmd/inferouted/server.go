@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
+	"regexp"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -18,6 +22,7 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/config"
 	"github.com/Rakshit-gen/inferoute/internal/proxy"
+	"github.com/Rakshit-gen/inferoute/internal/ratelimit"
 )
 
 // app is the running gateway's shared state.
@@ -190,5 +195,60 @@ func withSecurityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		h.ServeHTTP(w, r)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.status == 0 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap lets http.ResponseController reach the connection.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// withRequestLog assigns a request id and writes one access-log line per
+// request, including ones aborted by a broken upstream stream.
+func withRequestLog(h http.Handler, trusted []netip.Prefix) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-Id")
+		if !validRequestID.MatchString(id) {
+			id = rand.Text()
+			r.Header.Set("X-Request-Id", id)
+		}
+		w.Header().Set("X-Request-Id", id)
+		sw := &statusWriter{ResponseWriter: w}
+		start := time.Now()
+		defer func() {
+			switch r.URL.Path {
+			case "/healthz", "/readyz", "/metrics":
+				return
+			}
+			slog.Info("request", "id", id, "method", r.Method, "path", r.URL.Path, "status", sw.status,
+				"duration_ms", time.Since(start).Milliseconds(), "client", ratelimit.ClientIP(r, trusted),
+				"backend", w.Header().Get("X-Inferoute-Backend"))
+		}()
+		h.ServeHTTP(sw, r)
 	})
 }

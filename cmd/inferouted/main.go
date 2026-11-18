@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -24,6 +25,9 @@ import (
 )
 
 func main() {
+	// JSON logs; the standard log package is routed through this too.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
 	// Registered first: SIGHUP's default action would kill the process.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
@@ -110,7 +114,7 @@ func main() {
 		log.Fatalf("inferouted: %v", err)
 	}
 	log.Printf("inferouted: listening on %s, routing to %d backend(s)", ln.Addr(), len(cfg.Backends))
-	srv := newServer(withSecurityHeaders(withCORS(a.routes(), cfg.CORSOrigins)))
+	srv := newServer(withRequestLog(withSecurityHeaders(withCORS(a.routes(), cfg.CORSOrigins)), cfg.TrustedProxies))
 	if err := serve(ctx, srv, ln, time.Duration(cfg.ShutdownTimeout), h.Drain); err != nil {
 		log.Fatalf("inferouted: %v", err)
 	}

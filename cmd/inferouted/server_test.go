@@ -200,3 +200,15 @@ func TestCORS(t *testing.T) {
 		t.Fatalf("foreign preflight: %d %v", rec.Code, rec.Header())
 	}
 }
+
+func TestRequestIDs(t *testing.T) {
+	var seen string
+	h := withRequestLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = r.Header.Get("X-Request-Id") }), nil)
+	if rec := get(h, "/docs", "X-Request-Id", "abc-1"); rec.Header().Get("X-Request-Id") != "abc-1" || seen != "abc-1" {
+		t.Fatalf("id not preserved: %v, seen %q", rec.Header(), seen)
+	}
+	rec := get(h, "/docs", "X-Request-Id", "bad id\twith junk")
+	if got := rec.Header().Get("X-Request-Id"); got == "" || strings.Contains(got, " ") || got != seen {
+		t.Fatalf("id = %q, seen %q", got, seen)
+	}
+}
