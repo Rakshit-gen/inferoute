@@ -311,3 +311,40 @@ func TestServeHTTPCachesStreamingResponse(t *testing.T) {
 		t.Fatalf("expected exactly 1 backend call (second served from cache), got %d", calls)
 	}
 }
+
+func testPool(t *testing.T, specs ...config.Backend) *backend.Pool {
+	t.Helper()
+	p, err := backend.NewPool(specs)
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	return p
+}
+
+func upstream(t *testing.T, fn http.HandlerFunc) string {
+	t.Helper()
+	srv := httptest.NewServer(fn)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func post(h http.Handler, body string, headers ...string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+const modelBody = `{"model":"m"}`
+
+func TestRejectsNonPOST(t *testing.T) {
+	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil))
+	if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "POST" {
+		t.Fatalf("status = %d, headers = %v", rec.Code, rec.Header())
+	}
+}

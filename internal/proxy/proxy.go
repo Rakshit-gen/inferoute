@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Rakshit-gen/inferoute/internal/apierr"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/metrics"
@@ -74,6 +75,11 @@ func (h *Handler) Aliases() map[string]string { return *h.aliases.Load() }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		apierr.Write(w, http.StatusMethodNotAllowed, apierr.InvalidRequest, "method_not_allowed", "this endpoint accepts POST")
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "reading request body: "+err.Error(), http.StatusBadRequest)
