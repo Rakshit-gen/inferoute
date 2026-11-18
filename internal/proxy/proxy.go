@@ -303,6 +303,9 @@ type upstreamFailure struct {
 	backend string
 }
 
+// maxCachedResponse is the largest response stored in the cache.
+const maxCachedResponse = 1 << 20
+
 // maxFailureBody bounds how much of an error response is kept.
 const maxFailureBody = 64 << 10
 
@@ -370,7 +373,12 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 				return res // client disconnected; nothing more to do
 			}
 			if tee {
-				buf.Write(rbuf[:n])
+				if buf.Len()+n > maxCachedResponse {
+					tee = false // too big to cache; stop holding it
+					buf = bytes.Buffer{}
+				} else {
+					buf.Write(rbuf[:n])
+				}
 			}
 			if canFlush {
 				flusher.Flush() // keeps SSE/streaming chunks arriving as they're produced
