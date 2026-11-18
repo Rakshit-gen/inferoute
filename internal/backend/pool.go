@@ -251,6 +251,9 @@ func (p *Pool) ReportFailure(b *Backend) {
 // ReportSuccess clears b's consecutive-failure count.
 func (p *Pool) ReportSuccess(b *Backend) { b.failures.Store(0) }
 
+// Serves reports whether any backend is configured for model.
+func (p *Pool) Serves(model string) bool { return len(p.byModel[model]) > 0 }
+
 // Models returns every model name any backend in the pool serves, sorted
 // and de-duplicated. Backs the OpenAI-compatible GET /v1/models.
 func (p *Pool) Models() []string {

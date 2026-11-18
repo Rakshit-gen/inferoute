@@ -130,6 +130,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	pool := h.pool.Load()
+	if !pool.Serves(model) {
+		metrics.RequestsTotal.WithLabelValues("unknown", "none", "404").Inc()
+		apierr.Write(w, http.StatusNotFound, apierr.InvalidRequest, "model_not_found", "no backend serves this model")
+		return
+	}
 	defer metrics.ObserveDuration(model, start)
 
 	var messages []cache.Message
@@ -156,17 +162,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pool := h.pool.Load()
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		b, release, err := pool.Next(model)
 		if err != nil {
-			if errors.Is(err, backend.ErrUnknownModel) {
-				metrics.RequestsTotal.WithLabelValues(model, "none", "404").Inc()
-				apierr.Write(w, http.StatusNotFound, apierr.InvalidRequest, "model_not_found", err.Error())
-				return
-			}
 			metrics.RequestsTotal.WithLabelValues(model, "none", "503").Inc()
 			w.Header().Set("Retry-After", "1")
 			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "no_backend_available", err.Error())

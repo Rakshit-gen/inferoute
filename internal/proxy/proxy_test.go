@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
@@ -381,5 +383,23 @@ func TestUnknownModelIs404(t *testing.T) {
 	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
 	if rec := post(h, `{"model":"other"}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestUnknownModelDoesNotCreateMetricSeries(t *testing.T) {
+	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
+	post(h, `{"model":"attacker-chosen-name"}`)
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range families {
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetValue() == "attacker-chosen-name" {
+					t.Fatalf("%s recorded a client-chosen label", f.GetName())
+				}
+			}
+		}
 	}
 }
