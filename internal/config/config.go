@@ -180,6 +180,12 @@ func Load(path string) (*Config, error) {
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"
 	}
+	if cfg.HealthCheckInterval <= 0 {
+		return nil, fmt.Errorf("config %s: health_check_interval must be positive", path)
+	}
+	if !strings.HasPrefix(cfg.HealthCheckPath, "/") {
+		return nil, fmt.Errorf("config %s: health_check_path must start with /", path)
+	}
 	if len(cfg.Backends) == 0 {
 		return nil, fmt.Errorf("config %s: no backends configured", path)
 	}
