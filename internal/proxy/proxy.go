@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -58,6 +59,8 @@ func New(pool *backend.Pool) *Handler {
 	transport.MaxIdleConns = 256
 	transport.MaxIdleConnsPerHost = 64
 	transport.IdleConnTimeout = 90 * time.Second
+	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = 5 * time.Second
 
 	h := &Handler{
 		MaxBodyBytes:      DefaultMaxBodyBytes,
