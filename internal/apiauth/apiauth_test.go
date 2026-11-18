@@ -63,3 +63,22 @@ func TestEmptyConfiguredKeyDoesNotMatchMissingToken(t *testing.T) {
 		t.Fatal("an empty allowlist entry must not admit a request without a token")
 	}
 }
+
+func TestBearerParsing(t *testing.T) {
+	g := New([]string{"sk-1"})
+	h := g.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	for header, want := range map[string]int{
+		"Bearer sk-1": http.StatusOK,
+		"bearer sk-1": http.StatusOK,
+		"sk-1":        http.StatusUnauthorized,
+		"Basic sk-1":  http.StatusUnauthorized,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", header)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Authorization %q: status = %d, want %d", header, rec.Code, want)
+		}
+	}
+}
