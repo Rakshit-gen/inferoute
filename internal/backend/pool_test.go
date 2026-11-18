@@ -301,3 +301,13 @@ func TestHealthCheckJoinsBasePath(t *testing.T) {
 		t.Fatalf("probe path = %q", got)
 	}
 }
+
+func TestHealthCheckSendsAPIKey(t *testing.T) {
+	var got string
+	url := probeServer(t, func(w http.ResponseWriter, r *http.Request) { got = r.Header.Get("Authorization") })
+	p := mustPool(t, []config.Backend{{Name: "a", URL: url, Models: []string{"m"}, APIKey: "k"}})
+	runProbes(t, p, "/")
+	if got != "Bearer k" {
+		t.Fatalf("Authorization = %q", got)
+	}
+}

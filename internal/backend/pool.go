@@ -271,6 +271,9 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 			b.healthy.Store(false)
 			return
 		}
+		if b.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+b.APIKey)
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			b.healthy.Store(false)
