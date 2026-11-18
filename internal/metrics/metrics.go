@@ -22,6 +22,21 @@ var (
 		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300},
 	}, []string{"model"})
 
+	Failovers = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "inferoute_failovers_total",
+		Help: "Failed attempts against a backend that led to a retry or an error.",
+	}, []string{"backend"})
+
+	Rejected = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "inferoute_rejected_requests_total",
+		Help: "Requests refused by the gateway, by reason: unauthorized, rate_limited, or overloaded.",
+	}, []string{"reason"})
+
+	CacheWrites = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "inferoute_cache_writes_total",
+		Help: "Semantic cache writes by outcome: stored, error, or dropped.",
+	}, []string{"outcome"})
+
 	CacheLookups = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "inferoute_cache_lookups_total",
 		Help: "Semantic cache lookups by outcome: hit, miss, error, or skipped.",

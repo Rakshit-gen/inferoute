@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Rakshit-gen/inferoute/internal/apierr"
+	"github.com/Rakshit-gen/inferoute/internal/metrics"
 )
 
 // Gate holds the current allowlist. It is safe for concurrent use and its
@@ -88,6 +89,7 @@ func (g *Gate) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := bearer(r)
 		if !g.Allowed(token) {
+			metrics.Rejected.WithLabelValues("unauthorized").Inc()
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			apierr.Write(w, http.StatusUnauthorized, apierr.Authentication, "invalid_api_key", "a valid API key is required")
 			return

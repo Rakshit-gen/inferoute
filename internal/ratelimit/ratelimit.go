@@ -16,6 +16,7 @@ import (
 
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/apierr"
+	"github.com/Rakshit-gen/inferoute/internal/metrics"
 )
 
 // Allower reports whether the caller identified by key may proceed. New
@@ -106,6 +107,7 @@ func Middleware(l Allower, next http.Handler) http.Handler {
 func MiddlewareBehind(l Allower, trusted []netip.Prefix, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !l.Allow(keyFor(r, trusted)) {
+			metrics.Rejected.WithLabelValues("rate_limited").Inc()
 			secs := int(math.Ceil(l.RetryAfter().Seconds()))
 			w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
 			apierr.Write(w, http.StatusTooManyRequests, apierr.RateLimit, "rate_limit_exceeded", "rate limit exceeded")

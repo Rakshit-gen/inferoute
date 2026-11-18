@@ -118,6 +118,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case h.slots <- struct{}{}:
 			defer func() { <-h.slots }()
 		default:
+			metrics.Rejected.WithLabelValues("overloaded").Inc()
 			w.Header().Set("Retry-After", "1")
 			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "overloaded", "the gateway is at capacity")
 			return
@@ -239,6 +240,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						h.storeInCache(scope, cacheKey, vector, res.captured, res.contentType)
 					})
 				default: // the cache is behind; skipping a write only costs a future miss
+					metrics.CacheWrites.WithLabelValues("dropped").Inc()
 				}
 			}
 			return
@@ -248,6 +250,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.RequestsTotal.WithLabelValues(model, b.Name, "499").Inc()
 			return
 		}
+		metrics.Failovers.WithLabelValues(b.Name).Inc()
 		lastErr = errors.New("backend " + b.Name + " failed")
 		if res.failure != nil {
 			failure = res.failure
@@ -349,7 +352,10 @@ func (h *Handler) storeInCache(scope, key string, vector []float32, response []b
 	defer cancel()
 	if err := h.Cache.Store(ctx, scope, key, vector, response, contentType); err != nil {
 		log.Printf("inferoute: cache store: %v", err)
+		metrics.CacheWrites.WithLabelValues("error").Inc()
+		return
 	}
+	metrics.CacheWrites.WithLabelValues("stored").Inc()
 }
 
 // outcome reports what one attempt against a backend did.
