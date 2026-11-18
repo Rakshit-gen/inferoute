@@ -1,4 +1,8 @@
 bin/
+/config.json
+.env
+.env.*
+!.env.example
 
 # frontend
 /web/node_modules
