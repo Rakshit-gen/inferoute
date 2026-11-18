@@ -77,6 +77,7 @@ type Config struct {
 	ListenAddr          string    `json:"listen_addr"`
 	HealthCheckPath     string    `json:"health_check_path"`
 	HealthCheckInterval Duration  `json:"health_check_interval"`
+	HealthCheckTimeout  Duration  `json:"health_check_timeout"`
 	Backends            []Backend `json:"backends"`
 	RateLimit           RateLimit `json:"rate_limit"`
 	Cache               Cache     `json:"cache"`
@@ -159,7 +160,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}
 
-	cfg := &Config{HealthCheckInterval: Duration(10 * time.Second)}
+	cfg := &Config{
+		HealthCheckInterval: Duration(10 * time.Second),
+		HealthCheckTimeout:  Duration(2 * time.Second),
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(cfg); err != nil {
@@ -193,6 +197,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.HealthCheckInterval <= 0 {
 		return nil, fmt.Errorf("config %s: health_check_interval must be positive", path)
+	}
+	if cfg.HealthCheckTimeout <= 0 {
+		return nil, fmt.Errorf("config %s: health_check_timeout must be positive", path)
 	}
 	if !strings.HasPrefix(cfg.HealthCheckPath, "/") {
 		return nil, fmt.Errorf("config %s: health_check_path must start with /", path)

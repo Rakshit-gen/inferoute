@@ -44,6 +44,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	pool.HealthTimeout = time.Duration(cfg.HealthCheckTimeout)
+	pool.CheckAll(ctx, cfg.HealthCheckPath) // know the real state before serving
+
 	h := proxy.New(pool)
 	h.SetAliases(cfg.ModelAliases)
 
@@ -177,6 +180,8 @@ func main() {
 				log.Printf("inferouted: reload: %v (keeping current config)", err)
 				continue
 			}
+			newPool.HealthTimeout = time.Duration(newCfg.HealthCheckTimeout)
+			newPool.CheckAll(ctx, newCfg.HealthCheckPath) // don't route to dead backends after the swap
 			stopHealthChecks()
 			stopHealthChecks = startHealthChecks(newPool)
 			h.SetPool(newPool)

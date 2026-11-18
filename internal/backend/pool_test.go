@@ -344,3 +344,31 @@ func TestProbeThreshold(t *testing.T) {
 		t.Fatal("a failed first probe must count immediately")
 	}
 }
+
+func TestCheckAllRunsInParallelAndMarksDown(t *testing.T) {
+	slow := probeServer(t, func(w http.ResponseWriter, r *http.Request) { time.Sleep(200 * time.Millisecond) })
+	bad := probeServer(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadGateway) })
+	p := mustPool(t, []config.Backend{
+		{Name: "s1", URL: slow, Models: []string{"m"}},
+		{Name: "s2", URL: slow, Models: []string{"m"}},
+		{Name: "bad", URL: bad, Models: []string{"m"}},
+	})
+	start := time.Now()
+	p.CheckAll(context.Background(), "/")
+	if d := time.Since(start); d > 350*time.Millisecond {
+		t.Fatalf("probes ran serially: %v", d)
+	}
+	if p.all[2].Healthy() || !p.all[0].Healthy() {
+		t.Fatalf("snapshot = %+v", p.Snapshot())
+	}
+}
+
+func TestProbeTimeoutMarksDown(t *testing.T) {
+	url := probeServer(t, func(w http.ResponseWriter, r *http.Request) { time.Sleep(300 * time.Millisecond) })
+	p := mustPool(t, []config.Backend{{Name: "a", URL: url, Models: []string{"m"}}})
+	p.HealthTimeout = 20 * time.Millisecond
+	p.CheckAll(context.Background(), "/")
+	if p.all[0].Healthy() {
+		t.Fatal("a probe past its timeout must fail")
+	}
+}

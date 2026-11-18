@@ -128,3 +128,7 @@ func TestParsesTrustedProxies(t *testing.T) {
 		t.Fatal("expected an invalid CIDR to be rejected")
 	}
 }
+
+func TestRejectsBadHealthTimeout(t *testing.T) {
+	wantErr(t, `{"health_check_timeout":"0s",`+oneBackend+`}`, "health_check_timeout")
+}

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,6 +62,10 @@ func (b *Backend) Healthy() bool {
 }
 
 type Pool struct {
+	// HealthTimeout bounds one health check. Set it before starting checks.
+	HealthTimeout time.Duration
+
+	client   *http.Client
 	all      []*Backend
 	byModel  map[string][]*Backend
 	counters map[string]*atomic.Uint64
@@ -71,6 +76,9 @@ type Pool struct {
 // default when empty or unrecognised), LeastPending, or Weighted.
 func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 	p := &Pool{
+		HealthTimeout: 2 * time.Second,
+		client:        &http.Client{},
+
 		byModel:  make(map[string][]*Backend),
 		counters: make(map[string]*atomic.Uint64),
 		strategy: RoundRobin,
@@ -273,41 +281,51 @@ func (p *Pool) Snapshot() []Status {
 	return out
 }
 
-// StartHealthChecks polls every backend's health path on interval and
-// updates its healthy flag until ctx is canceled.
-func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time.Duration) {
-	client := &http.Client{Timeout: 2 * time.Second}
-	check := func(b *Backend) {
-		// Skip if the previous tick's check for this backend hasn't returned
-		// yet, so a slow check can't land after (and overwrite) a newer one.
-		if !b.checking.CompareAndSwap(false, true) {
-			return
-		}
-		defer b.checking.Store(false)
+// check probes one backend's health path and records the result.
+func (p *Pool) check(ctx context.Context, b *Backend, path string) {
+	// Skip if the previous tick's check for this backend hasn't returned
+	// yet, so a slow check can't land after (and overwrite) a newer one.
+	if !b.checking.CompareAndSwap(false, true) {
+		return
+	}
+	defer b.checking.Store(false)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.URL.JoinPath(path).String(), nil)
-		if err != nil {
+	probeCtx, cancel := context.WithTimeout(ctx, p.HealthTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, b.URL.JoinPath(path).String(), nil)
+	if err != nil {
+		b.recordProbe(false)
+		return
+	}
+	if b.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+b.APIKey)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		if ctx.Err() == nil {
 			b.recordProbe(false)
-			return
 		}
-		if b.APIKey != "" {
-			req.Header.Set("Authorization", "Bearer "+b.APIKey)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			if ctx.Err() == nil {
-				b.recordProbe(false)
-			}
-			return
-		}
-		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
-		resp.Body.Close()
-		b.recordProbe(resp.StatusCode < 500)
+		return
 	}
+	defer resp.Body.Close()
+	_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
+	b.recordProbe(resp.StatusCode < 500)
+}
 
+// CheckAll probes every backend in parallel and returns once all finish, so
+// a new pool can know its real state before it receives traffic.
+func (p *Pool) CheckAll(ctx context.Context, path string) {
+	var wg sync.WaitGroup
 	for _, b := range p.all {
-		check(b) // don't wait a full interval to know initial state
+		wg.Go(func() { p.check(ctx, b, path) })
 	}
+	wg.Wait()
+}
+
+// StartHealthChecks probes every backend immediately and then on interval
+// until ctx is canceled.
+func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time.Duration) {
+	p.CheckAll(ctx, path)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -317,7 +335,7 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 			return
 		case <-ticker.C:
 			for _, b := range p.all {
-				go check(b)
+				go p.check(ctx, b, path)
 			}
 		}
 	}
