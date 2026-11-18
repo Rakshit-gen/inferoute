@@ -5,6 +5,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -21,6 +22,12 @@ const (
 	RoundRobin   = "round_robin"
 	LeastPending = "least_pending"
 	Weighted     = "weighted"
+)
+
+// Errors returned by Next. They are wrapped with the model name.
+var (
+	ErrUnknownModel = errors.New("no backend serves this model")
+	ErrUnavailable  = errors.New("no backend is available for this model")
 )
 
 type Backend struct {
@@ -91,7 +98,7 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 func (p *Pool) Next(model string) (*Backend, func(), error) {
 	candidates := p.byModel[model]
 	if len(candidates) == 0 {
-		return nil, nil, fmt.Errorf("no backend serves model %q", model)
+		return nil, nil, fmt.Errorf("%w: %q", ErrUnknownModel, model)
 	}
 
 	var b *Backend
@@ -104,7 +111,7 @@ func (p *Pool) Next(model string) (*Backend, func(), error) {
 		b = p.pickRoundRobin(model, candidates)
 	}
 	if b == nil {
-		return nil, nil, fmt.Errorf("all backends for model %q are unhealthy", model)
+		return nil, nil, fmt.Errorf("%w: %q", ErrUnavailable, model)
 	}
 
 	if p.strategy == LeastPending {

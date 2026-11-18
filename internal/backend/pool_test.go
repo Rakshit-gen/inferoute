@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Rakshit-gen/inferoute/internal/config"
@@ -58,8 +59,8 @@ func TestNextErrorsWhenAllUnhealthy(t *testing.T) {
 	})
 	p.all[0].healthy.Store(false)
 
-	if _, _, err := p.Next("llama3"); err == nil {
-		t.Fatal("expected error when all backends unhealthy, got nil")
+	if _, _, err := p.Next("llama3"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable", err)
 	}
 }
 
@@ -67,8 +68,8 @@ func TestNextErrorsForUnknownModel(t *testing.T) {
 	p := mustPool(t, []config.Backend{
 		{Name: "a", URL: "http://a", Models: []string{"llama3"}},
 	})
-	if _, _, err := p.Next("gpt-nonexistent"); err == nil {
-		t.Fatal("expected error for unregistered model, got nil")
+	if _, _, err := p.Next("gpt-nonexistent"); !errors.Is(err, ErrUnknownModel) {
+		t.Fatalf("err = %v, want ErrUnknownModel", err)
 	}
 }
 
