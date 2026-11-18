@@ -266,7 +266,7 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 		}
 		defer b.checking.Store(false)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.URL.String()+path, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.URL.JoinPath(path).String(), nil)
 		if err != nil {
 			b.healthy.Store(false)
 			return

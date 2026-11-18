@@ -1,7 +1,10 @@
 package backend
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -268,5 +271,33 @@ func TestMaxConcurrentSpillsToOtherBackend(t *testing.T) {
 	release()
 	if _, _, err := p.Next("m"); err != nil {
 		t.Fatalf("a released slot should be usable: %v", err)
+	}
+}
+
+func probeServer(t *testing.T, h http.HandlerFunc) string {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// runProbes starts health checks and waits for the first one to land.
+func runProbes(t *testing.T, p *Pool, path string) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.StartHealthChecks(ctx, path, time.Hour); close(done) }()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
+}
+
+func TestHealthCheckJoinsBasePath(t *testing.T) {
+	var got string
+	url := probeServer(t, func(w http.ResponseWriter, r *http.Request) { got = r.URL.Path })
+	p := mustPool(t, []config.Backend{{Name: "a", URL: url + "/base/", Models: []string{"m"}}})
+	runProbes(t, p, "/healthz")
+	if got != "/base/healthz" {
+		t.Fatalf("probe path = %q", got)
 	}
 }
