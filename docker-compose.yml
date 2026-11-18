@@ -1,18 +1,32 @@
 # Self-contained quickstart: inferoute routing between two Ollama backends.
 # Semantic caching and distributed rate limiting need NuclaDB/Redis running
 # alongside this — see README.md for how to point config.json at them.
+#
+# Ollama has no authentication, so it is reachable only from inferoute. The
+# gateway is bound to localhost; add api_keys before exposing it further.
 services:
   ollama-1:
     image: ollama/ollama
-    ports: ["11434:11434"]
+    restart: unless-stopped
+    volumes: [ollama-1:/root/.ollama]
 
   ollama-2:
     image: ollama/ollama
-    ports: ["11435:11434"]
+    restart: unless-stopped
+    volumes: [ollama-2:/root/.ollama]
 
   inferoute:
     build: .
-    ports: ["8081:8081"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:8081:8081"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 35s
     volumes:
       - ./config.docker.json:/etc/secrets/config.json:ro
     depends_on: [ollama-1, ollama-2]
+
+volumes:
+  ollama-1:
+  ollama-2:
