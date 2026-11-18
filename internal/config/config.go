@@ -71,6 +71,8 @@ type Cache struct {
 	EmbeddingModel       string  `json:"embedding_model"`
 	MaxDistance          float32 `json:"max_distance"`
 	TenantID             string  `json:"tenant_id"`
+	// LookupTimeout bounds the embed and search done before each request.
+	LookupTimeout Duration `json:"lookup_timeout"`
 }
 
 type Config struct {

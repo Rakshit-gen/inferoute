@@ -37,6 +37,7 @@ type Config struct {
 	EmbeddingModel       string
 	MaxDistance          float32
 	TenantID             string
+	LookupTimeout        time.Duration // 0 means 2 seconds
 }
 
 type Cache struct {
@@ -45,6 +46,9 @@ type Cache struct {
 }
 
 func New(cfg Config) *Cache {
+	if cfg.LookupTimeout <= 0 {
+		cfg.LookupTimeout = 2 * time.Second
+	}
 	return &Cache{cfg: cfg, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
@@ -94,6 +98,8 @@ type Result struct {
 // Lookup embeds text and returns the nearest entry in scope whose distance
 // is within MaxDistance.
 func (c *Cache) Lookup(ctx context.Context, scope, text string) (Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.LookupTimeout)
+	defer cancel()
 	vec, err := c.embed(ctx, text)
 	if err != nil {
 		return Result{}, fmt.Errorf("embedding for cache lookup: %w", err)

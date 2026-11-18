@@ -71,6 +71,7 @@ func main() {
 			EmbeddingModel:       cfg.Cache.EmbeddingModel,
 			MaxDistance:          cfg.Cache.MaxDistance,
 			TenantID:             cfg.Cache.TenantID,
+			LookupTimeout:        time.Duration(cfg.Cache.LookupTimeout),
 		})
 		if err := c.EnsureTenant(ctx); err != nil {
 			log.Printf("inferouted: cache tenant setup: %v (continuing; cache calls will fail until this is fixed)", err)

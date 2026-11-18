@@ -3,9 +3,11 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // fakeNuclaDB is just enough of the NuclaDB REST API for Lookup/Store to
@@ -204,5 +206,18 @@ func TestLookupIgnoresOtherScopes(t *testing.T) {
 	}
 	if _, _, hit, _ := lookup(c, "q"); hit {
 		t.Fatal("an entry from another scope must not hit")
+	}
+}
+
+func TestLookupTimesOut(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	defer slow.Close()
+	c := New(Config{NuclaDBAddr: slow.URL, EmbeddingBackendAddr: slow.URL, EmbeddingModel: "e", LookupTimeout: 30 * time.Millisecond})
+	start := time.Now()
+	if _, err := c.Lookup(context.Background(), "s", "q"); err == nil || time.Since(start) > time.Second {
+		t.Fatalf("err = %v after %v", err, time.Since(start))
 	}
 }
