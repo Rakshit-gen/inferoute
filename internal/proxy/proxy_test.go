@@ -465,3 +465,12 @@ func TestEachBackendTriedOnce(t *testing.T) {
 		t.Fatalf("calls = %d", calls)
 	}
 }
+
+func TestSingle5xxKeepsBackendInRotation(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
+	pool := testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}})
+	post(New(pool), modelBody)
+	if !pool.Snapshot()[0].Healthy {
+		t.Fatal("one 5xx must not eject the backend")
+	}
+}

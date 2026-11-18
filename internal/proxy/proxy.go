@@ -182,6 +182,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		res := h.forward(w, r, b, body, cacheable)
 		release()
 		if res.wrote {
+			pool.ReportSuccess(b)
 			metrics.RequestsTotal.WithLabelValues(model, b.Name, strconv.Itoa(res.status)).Inc()
 			if cacheable && res.status == http.StatusOK && len(res.captured) > 0 {
 				go h.storeInCache(cacheKey, res.captured, res.contentType)
@@ -194,7 +195,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		lastErr = errors.New("backend " + b.Name + " failed")
-		pool.MarkUnhealthy(b)
+		if res.unreachable {
+			pool.MarkUnhealthy(b)
+		} else {
+			pool.ReportFailure(b)
+		}
 		log.Printf("inferoute: %s, retrying (attempt %d/%d)", lastErr, attempt+1, maxAttempts)
 	}
 	metrics.RequestsTotal.WithLabelValues(model, "none", "502").Inc()
