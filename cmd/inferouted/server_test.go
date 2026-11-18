@@ -179,3 +179,24 @@ func TestReadyzTracksBackends(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+func TestCORS(t *testing.T) {
+	h := withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }), []string{"https://ok.example"})
+	do := func(method, origin string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/v1/models", nil)
+		req.Header.Set("Origin", origin)
+		if method == http.MethodOptions {
+			req.Header.Set("Access-Control-Request-Method", "POST")
+			req.Header.Set("Access-Control-Request-Headers", "x-stainless-os")
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := do(http.MethodOptions, "https://ok.example"); rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Headers") != "x-stainless-os" {
+		t.Fatalf("preflight: %d %v", rec.Code, rec.Header())
+	}
+	if rec := do(http.MethodOptions, "https://evil.example"); rec.Code != http.StatusTeapot || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("foreign preflight: %d %v", rec.Code, rec.Header())
+	}
+}

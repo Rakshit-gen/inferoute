@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -116,29 +117,25 @@ func main() {
 	log.Printf("inferouted: stopped")
 }
 
-// withCORS lets browser dashboards on other origins call the read-only
-// endpoints and the playground POST /v1/chat/completions. A "*" entry in
-// allowed permits any origin; otherwise the request's Origin must be listed
-// exactly. Non-browser clients (curl, SDKs) send no Origin and are
-// unaffected.
+// withCORS lets browsers on allowed origins call the API. A "*" entry permits
+// any origin; otherwise the Origin must be listed exactly. Non-browser clients
+// send no Origin and are unaffected.
 func withCORS(h http.Handler, allowed []string) http.Handler {
-	allowAny := false
-	set := make(map[string]bool, len(allowed))
-	for _, o := range allowed {
-		if o == "*" {
-			allowAny = true
-		}
-		set[o] = true
-	}
+	allowAny := slices.Contains(allowed, "*")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && (allowAny || set[origin]) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Add("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Expose-Headers", "X-Inferoute-Cache, X-Inferoute-Backend")
+		w.Header().Add("Vary", "Origin")
+		origin := r.Header.Get("Origin")
+		if origin == "" || !(allowAny || slices.Contains(allowed, origin)) {
+			h.ServeHTTP(w, r)
+			return
 		}
-		if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Expose-Headers", "X-Inferoute-Cache, X-Inferoute-Backend, X-Request-Id, Retry-After")
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+			w.Header().Add("Vary", "Access-Control-Request-Headers")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", r.Header.Get("Access-Control-Request-Headers"))
+			w.Header().Set("Access-Control-Max-Age", "600")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
