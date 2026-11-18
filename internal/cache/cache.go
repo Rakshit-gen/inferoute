@@ -194,7 +194,7 @@ func (c *Cache) embed(ctx context.Context, text string) ([]float32, error) {
 func PromptText(messages []Message) string {
 	parts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		parts = append(parts, m.Content)
+		parts = append(parts, m.Role+": "+m.Content)
 	}
 	return strings.Join(parts, "\n")
 }

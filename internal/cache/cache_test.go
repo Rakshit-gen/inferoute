@@ -158,7 +158,7 @@ func TestLookupMissBeyondMaxDistance(t *testing.T) {
 
 func TestPromptTextJoinsMessages(t *testing.T) {
 	got := PromptText([]Message{{Role: "user", Content: "hi"}, {Role: "assistant", Content: "hello"}})
-	want := "hi\nhello"
+	want := "user: hi\nassistant: hello"
 	if got != want {
 		t.Fatalf("PromptText = %q, want %q", got, want)
 	}
