@@ -111,7 +111,7 @@ func main() {
 		rdb.Close()
 		redisRL := ratelimit.NewRedis(redisAddr(), 1e9, 1e9)
 		gwRedisRLURL := serve(proxyMux(ratelimit.Middleware(redisRL, h)))
-		results = append(results, run("proxy: + rate limit (Redis, fixed window)", client, gwRedisRLURL, authHdr, *conns, *warmup, *duration))
+		results = append(results, run("proxy: + rate limit (Redis, token bucket)", client, gwRedisRLURL, authHdr, *conns, *warmup, *duration))
 	} else {
 		fmt.Printf("(Redis not reachable at %s — skipping the shared rate-limit scenario)\n\n", redisAddr())
 	}

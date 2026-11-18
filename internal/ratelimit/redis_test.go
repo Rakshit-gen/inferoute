@@ -56,3 +56,28 @@ func TestRedisLimiterAllowsThenRejectsBurst(t *testing.T) {
 		t.Fatalf("expected 429 after limit exhausted, got %d", rec.Code)
 	}
 }
+
+func TestRedisLimiterHonoursSubOneRate(t *testing.T) {
+	requireRedis(t)
+	key := "sub-one-" + time.Now().Format(time.RFC3339Nano)
+	l := NewRedis("localhost:6379", 0.5, 1)
+	if !l.Allow(key) {
+		t.Fatal("first request should pass")
+	}
+	if l.Allow(key) {
+		t.Fatal("at 0.5 req/s a second immediate request must be rejected")
+	}
+}
+
+func TestRedisLimiterRefills(t *testing.T) {
+	requireRedis(t)
+	key := "refill-" + time.Now().Format(time.RFC3339Nano)
+	l := NewRedis("localhost:6379", 20, 1)
+	if !l.Allow(key) || l.Allow(key) {
+		t.Fatal("expected one token, then none")
+	}
+	time.Sleep(120 * time.Millisecond)
+	if !l.Allow(key) {
+		t.Fatal("expected a refilled token")
+	}
+}
