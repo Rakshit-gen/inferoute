@@ -109,3 +109,11 @@ export async function readLimited(
     text += decoder.decode(value, { stream: true })
   }
 }
+
+/** A trimmed string field no longer than max characters. */
+export function textField(value: unknown, label: string, max: number): string {
+  if (typeof value !== 'string') throw new ValidationError(`${label} must be a string`)
+  const text = value.trim()
+  if (text.length > max) throw new ValidationError(`${label} is too long`)
+  return text
+}

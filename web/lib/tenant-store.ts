@@ -1,7 +1,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { auth, clerkClient } from '@clerk/nextjs/server'
-import { assertPublicGateway, gatewayUrl, ValidationError } from './guards'
+import { assertPublicGateway, gatewayUrl, textField, ValidationError } from './guards'
 
 export interface Connection {
   id: string
@@ -16,6 +16,12 @@ export interface TenantData {
 }
 
 export class AuthError extends Error {}
+
+const MAX_CONNECTIONS = 20
+const MAX_NAME = 100
+const MAX_URL = 2048
+const MAX_API_KEY = 1024
+const MAX_STORED_BYTES = 7_500 // Clerk allows 8 KB of metadata
 
 /**
  * The tenant is the active Clerk organization when there is one, otherwise
@@ -43,6 +49,9 @@ export async function loadTenant(): Promise<TenantData> {
 }
 
 async function saveTenant(data: TenantData): Promise<void> {
+  if (Buffer.byteLength(JSON.stringify(data)) > MAX_STORED_BYTES) {
+    throw new ValidationError('connections are too large to store; remove one or shorten its fields')
+  }
   const { userId, orgId } = await tenantRef()
   const client = await clerkClient()
   // Clerk deep-merges metadata: only an explicit null removes the old value.
@@ -59,14 +68,17 @@ export async function addConnection(input: {
   url: string
   apiKey?: string
 }): Promise<Connection> {
-  const url = gatewayUrl(input.url)
+  const url = gatewayUrl(textField(input.url, 'url', MAX_URL))
   await assertPublicGateway(url)
   const data = await loadTenant()
+  if (data.connections.length >= MAX_CONNECTIONS) {
+    throw new ValidationError(`a maximum of ${MAX_CONNECTIONS} connections is allowed`)
+  }
   const conn: Connection = {
     id: randomUUID(),
-    name: input.name.trim() || 'gateway',
+    name: textField(input.name, 'name', MAX_NAME) || 'gateway',
     url,
-    apiKey: input.apiKey?.trim() || undefined,
+    apiKey: input.apiKey === undefined ? undefined : textField(input.apiKey, 'apiKey', MAX_API_KEY) || undefined,
   }
   data.connections.push(conn)
   if (!data.activeConnectionId) data.activeConnectionId = conn.id
@@ -81,14 +93,14 @@ export async function updateConnection(
   const data = await loadTenant()
   const conn = data.connections.find((c) => c.id === id)
   if (!conn) throw new ValidationError('unknown connection', 404)
-  if (patch.name !== undefined) conn.name = patch.name.trim() || conn.name
+  if (patch.name !== undefined) conn.name = textField(patch.name, 'name', MAX_NAME) || conn.name
   if (patch.url !== undefined) {
-    conn.url = gatewayUrl(patch.url)
+    conn.url = gatewayUrl(textField(patch.url, 'url', MAX_URL))
     await assertPublicGateway(conn.url)
   }
   // null clears the key; undefined leaves it; a string sets it
   if (patch.apiKey === null) conn.apiKey = undefined
-  else if (typeof patch.apiKey === 'string' && patch.apiKey.trim()) conn.apiKey = patch.apiKey.trim()
+  else if (patch.apiKey !== undefined) conn.apiKey = textField(patch.apiKey, 'apiKey', MAX_API_KEY) || conn.apiKey
   await saveTenant(data)
   return conn
 }
