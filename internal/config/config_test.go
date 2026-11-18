@@ -59,3 +59,19 @@ func TestBackendErrorOmitsAPIKey(t *testing.T) {
 func TestRejectsEmptyAPIKey(t *testing.T) {
 	wantErr(t, `{"api_keys":[""],`+oneBackend+`}`, "api_keys[0]")
 }
+
+func TestExpandsSecretsFromEnv(t *testing.T) {
+	t.Setenv("GW_KEY", "sk-env")
+	t.Setenv("UP_KEY", "up-env")
+	cfg, err := load(t, `{"api_keys":["${GW_KEY}"],"backends":[{"name":"a","url":"http://a:1","models":["m"],"api_key":"${UP_KEY}"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKeys[0] != "sk-env" || cfg.Backends[0].APIKey != "up-env" {
+		t.Fatalf("secrets not expanded: %+v", cfg)
+	}
+}
+
+func TestUnsetSecretIsAnError(t *testing.T) {
+	wantErr(t, `{"api_keys":["${INFEROUTE_TEST_UNSET}"],`+oneBackend+`}`, "INFEROUTE_TEST_UNSET")
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -92,6 +93,43 @@ type Config struct {
 	APIKeys []string `json:"api_keys"`
 }
 
+var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandSecret replaces each ${VAR} in s with that environment variable.
+func expandSecret(s string) (string, error) {
+	var missing string
+	out := envRef.ReplaceAllStringFunc(s, func(ref string) string {
+		name := envRef.FindStringSubmatch(ref)[1]
+		v, ok := os.LookupEnv(name)
+		if !ok || v == "" {
+			missing = name
+		}
+		return v
+	})
+	if missing != "" {
+		return "", fmt.Errorf("environment variable %s is not set", missing)
+	}
+	return out, nil
+}
+
+// expandSecrets resolves ${VAR} in the fields that hold credentials.
+func (c *Config) expandSecrets() (err error) {
+	for i := range c.Backends {
+		if c.Backends[i].APIKey, err = expandSecret(c.Backends[i].APIKey); err != nil {
+			return fmt.Errorf("backend %s api_key: %w", c.Backends[i].Name, err)
+		}
+	}
+	for i := range c.APIKeys {
+		if c.APIKeys[i], err = expandSecret(c.APIKeys[i]); err != nil {
+			return fmt.Errorf("api_keys[%d]: %w", i, err)
+		}
+	}
+	if c.RateLimit.RedisAddr, err = expandSecret(c.RateLimit.RedisAddr); err != nil {
+		return fmt.Errorf("rate_limit.redis_addr: %w", err)
+	}
+	return nil
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -106,6 +144,9 @@ func Load(path string) (*Config, error) {
 	}
 	if dec.More() {
 		return nil, fmt.Errorf("parsing config %s: unexpected data after the JSON object", path)
+	}
+	if err := cfg.expandSecrets(); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
 	if cfg.LoadBalancing == "" {
 		cfg.LoadBalancing = "round_robin"
