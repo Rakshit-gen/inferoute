@@ -57,3 +57,9 @@ func TestGateMiddleware(t *testing.T) {
 		t.Fatalf("after reload: status = %d, want 401", rec.Code)
 	}
 }
+
+func TestEmptyConfiguredKeyDoesNotMatchMissingToken(t *testing.T) {
+	if New([]string{""}).Allowed("") {
+		t.Fatal("an empty allowlist entry must not admit a request without a token")
+	}
+}

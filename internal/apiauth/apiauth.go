@@ -38,6 +38,9 @@ func (g *Gate) Allowed(presented string) bool {
 	if len(keys) == 0 {
 		return true
 	}
+	if presented == "" {
+		return false
+	}
 	match := 0
 	for _, k := range keys {
 		// Compare every key (no early return) so a caller can't learn which
