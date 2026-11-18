@@ -82,7 +82,7 @@ func main() {
 			limiter = ratelimit.New(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
 			log.Printf("inferouted: rate limiting enabled at %.1f req/s, burst %d, per API key", cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
 		}
-		handler = ratelimit.Middleware(limiter, h)
+		handler = ratelimit.MiddlewareBehind(limiter, cfg.TrustedProxies, h)
 	}
 
 	// API-key allowlist, outermost so an unauthorized caller is rejected

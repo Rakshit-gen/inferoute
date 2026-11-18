@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,8 +94,14 @@ func (l *Limiter) sweepLoop() {
 // Middleware rejects requests over the per-key rate with 429. Callers the
 // API-key gate verified are limited per key; everyone else per remote IP.
 func Middleware(l Allower, next http.Handler) http.Handler {
+	return MiddlewareBehind(l, nil, next)
+}
+
+// MiddlewareBehind is Middleware for a gateway running behind the proxies in
+// trusted, whose X-Forwarded-For entries it believes.
+func MiddlewareBehind(l Allower, trusted []netip.Prefix, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.Allow(keyFor(r)) {
+		if !l.Allow(keyFor(r, trusted)) {
 			secs := int(math.Ceil(l.RetryAfter().Seconds()))
 			w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
 			apierr.Write(w, http.StatusTooManyRequests, apierr.RateLimit, "rate_limit_exceeded", "rate limit exceeded")
@@ -104,11 +111,46 @@ func Middleware(l Allower, next http.Handler) http.Handler {
 	})
 }
 
-func keyFor(r *http.Request) string {
+func keyFor(r *http.Request, trusted []netip.Prefix) string {
 	if id := apiauth.Identity(r.Context()); id != "" {
 		return "key:" + id
 	}
-	return "ip:" + ipBucket(remoteIP(r))
+	return "ip:" + ipBucket(ClientIP(r, trusted))
+}
+
+// ClientIP returns the caller's address. When the peer is a trusted proxy it
+// walks X-Forwarded-For from the right and returns the first address that is
+// not itself trusted; entries further left are client-supplied and ignored.
+func ClientIP(r *http.Request, trusted []netip.Prefix) string {
+	client := remoteIP(r)
+	isTrusted := func(ip string) bool {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return false
+		}
+		addr = addr.Unmap().WithZone("")
+		for _, p := range trusted {
+			if p.Contains(addr) {
+				return true
+			}
+		}
+		return false
+	}
+	if !isTrusted(client) {
+		return client
+	}
+	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if _, err := netip.ParseAddr(hop); err != nil {
+			break
+		}
+		client = hop
+		if !isTrusted(hop) {
+			break
+		}
+	}
+	return client
 }
 
 func remoteIP(r *http.Request) string {

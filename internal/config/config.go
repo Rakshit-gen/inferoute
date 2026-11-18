@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -94,6 +95,9 @@ type Config struct {
 	// default) leaves the proxy open, matching inferoute's default posture.
 	// Reloaded on SIGHUP alongside backends.
 	APIKeys []string `json:"api_keys"`
+	// TrustedProxies lists the CIDR ranges of load balancers in front of the
+	// gateway. Only requests arriving from them have X-Forwarded-For believed.
+	TrustedProxies []netip.Prefix `json:"trusted_proxies"`
 }
 
 // checkHTTPURL requires an absolute http(s) URL. Its errors never quote the

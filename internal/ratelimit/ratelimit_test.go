@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
@@ -86,5 +87,23 @@ func TestIPBucket(t *testing.T) {
 	}
 	if got := ipBucket("::ffff:192.0.2.1"); got != "192.0.2.1" {
 		t.Fatalf("mapped IPv4 = %q", got)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	for _, tt := range []struct{ remote, xff, want string }{
+		{"203.0.113.9:1", "1.1.1.1", "203.0.113.9"},              // untrusted peer: header ignored
+		{"10.0.0.1:1", "198.51.100.7", "198.51.100.7"},           // one proxy
+		{"10.0.0.1:1", "1.1.1.1, 198.51.100.7", "198.51.100.7"},  // forged left entry ignored
+		{"10.0.0.1:1", "198.51.100.7, 10.0.0.2", "198.51.100.7"}, // proxy chain
+		{"10.0.0.1:1", "garbage", "10.0.0.1"},                    // unusable header
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/", nil)
+		r.RemoteAddr = tt.remote
+		r.Header.Set("X-Forwarded-For", tt.xff)
+		if got := ClientIP(r, trusted); got != tt.want {
+			t.Errorf("remote %s xff %q: got %s, want %s", tt.remote, tt.xff, got, tt.want)
+		}
 	}
 }

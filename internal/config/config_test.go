@@ -118,3 +118,13 @@ func TestRejectsBadCache(t *testing.T) {
 func TestRejectsDanglingAlias(t *testing.T) {
 	wantErr(t, `{"model_aliases":{"gpt-4":"nope"},`+oneBackend+`}`, "no backend serves")
 }
+
+func TestParsesTrustedProxies(t *testing.T) {
+	cfg, err := load(t, `{"trusted_proxies":["10.0.0.0/8"],`+oneBackend+`}`)
+	if err != nil || len(cfg.TrustedProxies) != 1 {
+		t.Fatalf("cfg = %+v, err = %v", cfg, err)
+	}
+	if _, err := load(t, `{"trusted_proxies":["nope"],`+oneBackend+`}`); err == nil {
+		t.Fatal("expected an invalid CIDR to be rejected")
+	}
+}
