@@ -127,7 +127,7 @@ func (c *Cache) Lookup(ctx context.Context, scope, text string) (Result, error) 
 		return Result{}, fmt.Errorf("decoding cache search response: %w", err)
 	}
 	for _, m := range result.Matches {
-		if m.Score > c.cfg.MaxDistance || m.Metadata["scope"] != scope {
+		if m.Score > c.cfg.MaxDistance || m.Metadata["scope"] != scope || m.Metadata["response"] == "" {
 			continue
 		}
 		ct := m.Metadata["content_type"]
