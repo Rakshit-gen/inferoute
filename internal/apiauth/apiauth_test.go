@@ -44,6 +44,9 @@ func TestGateMiddleware(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer sk-live-1")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
+	if req.Header.Get("Authorization") != "" {
+		t.Fatal("the gateway key must not stay on the forwarded request")
+	}
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("valid key: status = %d, want 418 (passed through)", rec.Code)
 	}
@@ -88,5 +91,18 @@ func TestUnauthorizedResponseShape(t *testing.T) {
 	New([]string{"k"}).Middleware(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/x", nil))
 	if rec.Header().Get("WWW-Authenticate") != "Bearer" || rec.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("headers = %v", rec.Header())
+	}
+}
+
+func TestIdentityReachesNextHandler(t *testing.T) {
+	var got string
+	h := New([]string{"sk-1"}).Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = Identity(r.Context())
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer sk-1")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got != Fingerprint("sk-1") || got == "sk-1" {
+		t.Fatalf("Identity = %q", got)
 	}
 }

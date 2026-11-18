@@ -4,8 +4,10 @@
 package apiauth
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -57,14 +59,42 @@ func (g *Gate) Allowed(presented string) bool {
 	return match == 1
 }
 
+type identityKey struct{}
+
+// Fingerprint returns a stable one-way identifier for a credential, safe to
+// use in logs, cache scopes, and Redis keys.
+func Fingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:16])
+}
+
+// Identity returns the fingerprint of the key this request was authenticated
+// with, or "" when the gate did not verify one.
+func Identity(ctx context.Context) string {
+	id, _ := ctx.Value(identityKey{}).(string)
+	return id
+}
+
+// WithIdentity records a verified caller on ctx.
+func WithIdentity(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, identityKey{}, id)
+}
+
 // Middleware rejects requests whose bearer token is not in the allowlist
-// with 401. It is a pass-through when no keys are configured.
+// with 401. An accepted key is removed from the request, so it never reaches
+// a backend, and replaced by its fingerprint in the context. It is a
+// pass-through when no keys are configured.
 func (g *Gate) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !g.Allowed(bearer(r)) {
+		token := bearer(r)
+		if !g.Allowed(token) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			apierr.Write(w, http.StatusUnauthorized, apierr.Authentication, "invalid_api_key", "a valid API key is required")
 			return
+		}
+		if g.Required() {
+			r = r.WithContext(WithIdentity(r.Context(), Fingerprint(token)))
+			r.Header.Del("Authorization")
 		}
 		next.ServeHTTP(w, r)
 	})
