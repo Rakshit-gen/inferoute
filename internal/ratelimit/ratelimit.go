@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"sync"
 	"time"
@@ -107,8 +108,27 @@ func keyFor(r *http.Request) string {
 	if id := apiauth.Identity(r.Context()); id != "" {
 		return "key:" + id
 	}
+	return "ip:" + ipBucket(remoteIP(r))
+}
+
+func remoteIP(r *http.Request) string {
 	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return "ip:" + ip
+		return ip
 	}
-	return "ip:" + r.RemoteAddr
+	return r.RemoteAddr
+}
+
+// ipBucket groups IPv6 addresses by /64, the usual single-customer allocation.
+func ipBucket(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap().WithZone("")
+	if addr.Is6() {
+		if p, err := addr.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return addr.String()
 }

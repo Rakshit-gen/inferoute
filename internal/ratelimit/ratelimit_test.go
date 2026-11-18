@@ -76,3 +76,15 @@ func TestUnverifiedTokensShareTheIPBucket(t *testing.T) {
 		}
 	}
 }
+
+func TestIPBucket(t *testing.T) {
+	if a, b := ipBucket("2001:db8:1:2::1"), ipBucket("2001:db8:1:2:ffff::9"); a != b {
+		t.Fatalf("same /64 got different buckets: %s, %s", a, b)
+	}
+	if ipBucket("2001:db8:1:2::1") == ipBucket("2001:db8:1:3::1") {
+		t.Fatal("different /64s must not share a bucket")
+	}
+	if got := ipBucket("::ffff:192.0.2.1"); got != "192.0.2.1" {
+		t.Fatalf("mapped IPv4 = %q", got)
+	}
+}
