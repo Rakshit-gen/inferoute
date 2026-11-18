@@ -105,6 +105,8 @@ type Config struct {
 	APIKeys []string `json:"api_keys"`
 	// MaxRequestBodyBytes rejects larger request bodies with 413.
 	MaxRequestBodyBytes int64 `json:"max_request_body_bytes"`
+	// ShutdownTimeout is how long running requests get to finish on SIGTERM.
+	ShutdownTimeout Duration `json:"shutdown_timeout"`
 	// MaxConcurrentRequests sheds requests beyond this many with 503. 0
 	// disables the limit.
 	MaxConcurrentRequests int `json:"max_concurrent_requests"`
@@ -180,6 +182,7 @@ func Load(path string) (*Config, error) {
 		Cache:                 Cache{TTL: Duration(24 * time.Hour)},
 		MaxRequestBodyBytes:   16 << 20,
 		MaxConcurrentRequests: 1024,
+		ShutdownTimeout:       Duration(30 * time.Second),
 		UpstreamTimeout:       Duration(5 * time.Minute),
 		StreamIdleTimeout:     Duration(2 * time.Minute),
 	}
@@ -216,6 +219,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.UpstreamTimeout <= 0 || cfg.StreamIdleTimeout <= 0 {
 		return nil, fmt.Errorf("config %s: upstream_timeout and stream_idle_timeout must be positive", path)
+	}
+	if cfg.ShutdownTimeout <= 0 {
+		return nil, fmt.Errorf("config %s: shutdown_timeout must be positive", path)
 	}
 	if cfg.MaxConcurrentRequests < 0 {
 		return nil, fmt.Errorf("config %s: max_concurrent_requests must not be negative", path)
