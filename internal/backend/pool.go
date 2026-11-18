@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -279,6 +280,7 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 			b.healthy.Store(false)
 			return
 		}
+		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
 		resp.Body.Close()
 		b.healthy.Store(resp.StatusCode < 500)
 	}
