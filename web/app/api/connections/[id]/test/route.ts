@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { gatewayFetch } from '@/lib/gateway-proxy'
+import { gatewayFetch, MAX_GATEWAY_RESPONSE } from '@/lib/gateway-proxy'
+import { readLimited } from '@/lib/guards'
 import { getConnection, AuthError } from '@/lib/tenant-store'
 
 export const dynamic = 'force-dynamic'
@@ -35,7 +36,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (!res.ok) {
       return json(200, { reachable: true, authOk: true, status: res.status, latencyMs })
     }
-    const config = await res.json().catch(() => null)
+    const config = await readLimited(res.body, MAX_GATEWAY_RESPONSE, 'too large', 502)
+      .then(JSON.parse)
+      .catch(() => null)
     return json(200, { reachable: true, authOk: true, status: 200, latencyMs, config })
   } catch (e) {
     if (e instanceof AuthError) return json(401, { error: 'sign in required' })

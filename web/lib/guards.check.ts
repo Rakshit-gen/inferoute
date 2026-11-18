@@ -1,6 +1,6 @@
 // Self-check for the request guards. Run: npm run check
 import assert from 'node:assert/strict'
-import { assertPublicGateway, gatewayUrl, isPrivateAddress, ValidationError } from './guards'
+import { assertPublicGateway, gatewayUrl, isPrivateAddress, readLimited, ValidationError } from './guards'
 
 for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '::1', 'fe80::1', 'fd00::1', '::ffff:127.0.0.1']) {
   assert.ok(isPrivateAddress(ip), ip)
@@ -22,6 +22,9 @@ async function main() {
   await rejects('https://looks-public.example', ['8.8.8.8', '10.0.0.1'])
   await assertPublicGateway('https://gw.example', false, async () => ['8.8.8.8'])
   await assertPublicGateway('http://localhost:8091', true)
+  const body = () => new Response('héllo').body
+  assert.equal(await readLimited(body(), 6, 'big', 413), 'héllo')
+  await assert.rejects(readLimited(body(), 5, 'big', 413), (e: ValidationError) => e.status === 413)
   console.log('guards.check: OK')
 }
 main()

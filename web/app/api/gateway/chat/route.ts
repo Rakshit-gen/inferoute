@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { withGateway, gatewayFetch } from '@/lib/gateway-proxy'
+import { readLimited } from '@/lib/guards'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,10 +10,11 @@ const PASS_THROUGH = ['x-inferoute-backend', 'x-inferoute-cache']
 // Longer than the gateway's own upstream_timeout default. It only covers the
 // wait for headers, so a long stream is not cut off.
 const HEADERS_TIMEOUT_MS = 330_000
+const MAX_CHAT_BYTES = 1 << 20
 
 export function POST(req: NextRequest) {
   return withGateway(async (conn) => {
-    const payload = await req.text()
+    const payload = await readLimited(req.body, MAX_CHAT_BYTES, 'message is too large', 413)
     const abort = new AbortController()
     req.signal.addEventListener('abort', () => abort.abort(), { once: true })
     const timer = setTimeout(() => abort.abort(), HEADERS_TIMEOUT_MS)

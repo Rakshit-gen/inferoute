@@ -85,3 +85,27 @@ export async function assertPublicGateway(
   }
   if (addresses.some(isPrivateAddress)) throw new ValidationError('gateway address is not allowed')
 }
+
+/** Reads a body as text, failing once it exceeds max bytes. */
+export async function readLimited(
+  body: ReadableStream<Uint8Array> | null,
+  max: number,
+  message: string,
+  status: number,
+): Promise<string> {
+  if (!body) return ''
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let size = 0
+  let text = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) return text + decoder.decode()
+    size += value.length
+    if (size > max) {
+      await reader.cancel()
+      throw new ValidationError(message, status)
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+}
