@@ -19,7 +19,7 @@ var (
 	RequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "inferoute_request_duration_seconds",
 		Help:    "End-to-end request latency by model, from receipt to fully written response.",
-		Buckets: prometheus.DefBuckets,
+		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60, 120, 300},
 	}, []string{"model"})
 
 	CacheLookups = promauto.NewCounterVec(prometheus.CounterOpts{
