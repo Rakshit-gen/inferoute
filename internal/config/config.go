@@ -27,6 +27,24 @@ type Backend struct {
 	Weight int `json:"weight"`
 }
 
+// Duration is a time.Duration written in config as a string such as "10s".
+type Duration time.Duration
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("duration must be a string like \"10s\": %w", err)
+	}
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+	return nil
+}
+
+func (d Duration) String() string { return time.Duration(d).String() }
+
 type RateLimit struct {
 	Enabled           bool    `json:"enabled"`
 	RequestsPerSecond float64 `json:"requests_per_second"`
@@ -46,12 +64,12 @@ type Cache struct {
 }
 
 type Config struct {
-	ListenAddr          string        `json:"listen_addr"`
-	HealthCheckPath     string        `json:"health_check_path"`
-	HealthCheckInterval time.Duration `json:"health_check_interval"`
-	Backends            []Backend     `json:"backends"`
-	RateLimit           RateLimit     `json:"rate_limit"`
-	Cache               Cache         `json:"cache"`
+	ListenAddr          string    `json:"listen_addr"`
+	HealthCheckPath     string    `json:"health_check_path"`
+	HealthCheckInterval Duration  `json:"health_check_interval"`
+	Backends            []Backend `json:"backends"`
+	RateLimit           RateLimit `json:"rate_limit"`
+	Cache               Cache     `json:"cache"`
 	// LoadBalancing picks which backend serves each request among the
 	// healthy ones for a model: "round_robin" (default, even rotation),
 	// "least_pending" (fewest in-flight requests), or "weighted" (random,
@@ -78,32 +96,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}
 
-	var raw struct {
-		ListenAddr          string            `json:"listen_addr"`
-		HealthCheckPath     string            `json:"health_check_path"`
-		HealthCheckInterval string            `json:"health_check_interval"`
-		Backends            []Backend         `json:"backends"`
-		RateLimit           RateLimit         `json:"rate_limit"`
-		Cache               Cache             `json:"cache"`
-		ModelAliases        map[string]string `json:"model_aliases"`
-		CORSOrigins         []string          `json:"cors_origins"`
-		APIKeys             []string          `json:"api_keys"`
-		LoadBalancing       string            `json:"load_balancing"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	cfg := &Config{HealthCheckInterval: Duration(10 * time.Second)}
+	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
-	}
-
-	cfg := &Config{
-		ListenAddr:      raw.ListenAddr,
-		HealthCheckPath: raw.HealthCheckPath,
-		Backends:        raw.Backends,
-		RateLimit:       raw.RateLimit,
-		Cache:           raw.Cache,
-		ModelAliases:    raw.ModelAliases,
-		CORSOrigins:     raw.CORSOrigins,
-		APIKeys:         raw.APIKeys,
-		LoadBalancing:   raw.LoadBalancing,
 	}
 	if cfg.LoadBalancing == "" {
 		cfg.LoadBalancing = "round_robin"
@@ -121,14 +116,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"
-	}
-	cfg.HealthCheckInterval = 10 * time.Second
-	if raw.HealthCheckInterval != "" {
-		d, err := time.ParseDuration(raw.HealthCheckInterval)
-		if err != nil {
-			return nil, fmt.Errorf("parsing health_check_interval %q: %w", raw.HealthCheckInterval, err)
-		}
-		cfg.HealthCheckInterval = d
 	}
 	if len(cfg.Backends) == 0 {
 		return nil, fmt.Errorf("config %s: no backends configured", path)

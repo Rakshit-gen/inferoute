@@ -52,7 +52,7 @@ func main() {
 	// the previous pool's loop doesn't leak.
 	startHealthChecks := func(p *backend.Pool) context.CancelFunc {
 		hctx, cancel := context.WithCancel(ctx)
-		go p.StartHealthChecks(hctx, cfg.HealthCheckPath, cfg.HealthCheckInterval)
+		go p.StartHealthChecks(hctx, cfg.HealthCheckPath, time.Duration(cfg.HealthCheckInterval))
 		return cancel
 	}
 	stopHealthChecks := startHealthChecks(pool)
