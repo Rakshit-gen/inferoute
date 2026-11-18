@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { withGateway, authHeaders } from '@/lib/gateway-proxy'
+import { withGateway, gatewayFetch } from '@/lib/gateway-proxy'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,11 +9,10 @@ const PASS_THROUGH = ['x-inferoute-backend', 'x-inferoute-cache']
 export function POST(req: NextRequest) {
   return withGateway(async (conn) => {
     const payload = await req.text()
-    const upstream = await fetch(`${conn.url}/v1/chat/completions`, {
+    const upstream = await gatewayFetch(conn, '/v1/chat/completions', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeaders(conn) },
+      headers: { 'content-type': 'application/json' },
       body: payload,
-      cache: 'no-store',
     })
     const headers = new Headers({
       'content-type': upstream.headers.get('content-type') ?? 'application/json',

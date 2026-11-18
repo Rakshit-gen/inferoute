@@ -1,6 +1,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import { auth, clerkClient } from '@clerk/nextjs/server'
+import { assertPublicGateway, gatewayUrl } from './guards'
 
 export interface Connection {
   id: string
@@ -56,8 +57,8 @@ export async function addConnection(input: {
   url: string
   apiKey?: string
 }): Promise<Connection> {
-  const url = input.url.trim().replace(/\/$/, '')
-  if (!/^https?:\/\//.test(url)) throw new Error('url must start with http:// or https://')
+  const url = gatewayUrl(input.url)
+  await assertPublicGateway(url)
   const data = await loadTenant()
   const conn: Connection = {
     id: randomUUID(),
@@ -80,9 +81,8 @@ export async function updateConnection(
   if (!conn) throw new Error('unknown connection')
   if (patch.name !== undefined) conn.name = patch.name.trim() || conn.name
   if (patch.url !== undefined) {
-    const url = patch.url.trim().replace(/\/$/, '')
-    if (!/^https?:\/\//.test(url)) throw new Error('url must start with http:// or https://')
-    conn.url = url
+    conn.url = gatewayUrl(patch.url)
+    await assertPublicGateway(conn.url)
   }
   // null clears the key; undefined leaves it; a string sets it
   if (patch.apiKey === null) conn.apiKey = undefined
@@ -131,6 +131,6 @@ export function publicConnection(c: Connection) {
 }
 
 /** The Authorization header to send to this connection's gateway, if any. */
-export function authFor(c: Connection): HeadersInit {
+export function authFor(c: Connection): Record<string, string> {
   return c.apiKey ? { Authorization: `Bearer ${c.apiKey}` } : {}
 }

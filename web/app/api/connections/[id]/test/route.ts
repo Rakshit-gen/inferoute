@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { getConnection, authFor, AuthError } from '@/lib/tenant-store'
+import { gatewayFetch } from '@/lib/gateway-proxy'
+import { getConnection, AuthError } from '@/lib/tenant-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,11 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const started = Date.now()
     let res: Response
     try {
-      res = await fetch(`${conn.url}/v1/config`, {
-        headers: authFor(conn),
-        cache: 'no-store',
-        signal: AbortSignal.timeout(8000),
-      })
+      res = await gatewayFetch(conn, '/v1/config', { signal: AbortSignal.timeout(8000) })
     } catch (e) {
       return json(200, {
         reachable: false,

@@ -1,9 +1,8 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { assertPublicGateway } from './guards'
 import { activeConnection, authFor, AuthError, type Connection } from './tenant-store'
-
-export { authFor as authHeaders }
 
 const json = (status: number, body: unknown) => NextResponse.json(body, { status })
 
@@ -28,12 +27,20 @@ export async function withGateway(
   }
 }
 
+/** The only way this app calls a gateway: checks the target every time. */
+export async function gatewayFetch(conn: Connection, path: string, init: RequestInit = {}): Promise<Response> {
+  await assertPublicGateway(conn.url)
+  return fetch(`${conn.url}${path}`, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), ...authFor(conn) },
+    cache: 'no-store',
+    redirect: 'error', // a redirect could point past the address check
+  })
+}
+
 /** Proxies a GET to the connection's gateway, passing the body + status through. */
 export async function proxyGet(conn: Connection, path: string): Promise<Response> {
-  const upstream = await fetch(`${conn.url}${path}`, {
-    headers: authFor(conn),
-    cache: 'no-store',
-  })
+  const upstream = await gatewayFetch(conn, path)
   const body = await upstream.text()
   return new NextResponse(body, {
     status: upstream.status,
