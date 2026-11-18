@@ -45,6 +45,8 @@ type Backend struct {
 	inflight atomic.Int64 // requests currently being proxied (least_pending)
 	checking atomic.Bool  // a health check for this backend is in flight
 
+	probed       atomic.Bool  // at least one health check has finished
+	probeFails   atomic.Int32 // consecutive failed health checks
 	failures     atomic.Int32 // consecutive failed requests
 	ejectedUntil atomic.Int64 // unix nanos; no traffic before this time
 }
@@ -211,6 +213,22 @@ func (p *Pool) MarkUnhealthy(b *Backend) {
 	b.ejectedUntil.Store(time.Now().Add(ejectCooldown).UnixNano())
 }
 
+// probeFailThreshold is how many consecutive failed health checks mark a
+// backend down once it has been seen.
+const probeFailThreshold = 2
+
+func (b *Backend) recordProbe(ok bool) {
+	first := !b.probed.Swap(true)
+	if ok {
+		b.probeFails.Store(0)
+		b.healthy.Store(true)
+		return
+	}
+	if b.probeFails.Add(1) >= probeFailThreshold || first {
+		b.healthy.Store(false)
+	}
+}
+
 // failureThreshold is how many consecutive failed requests eject a backend.
 const failureThreshold = 3
 
@@ -269,7 +287,7 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.URL.JoinPath(path).String(), nil)
 		if err != nil {
-			b.healthy.Store(false)
+			b.recordProbe(false)
 			return
 		}
 		if b.APIKey != "" {
@@ -278,13 +296,13 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 		resp, err := client.Do(req)
 		if err != nil {
 			if ctx.Err() == nil {
-				b.healthy.Store(false)
+				b.recordProbe(false)
 			}
 			return
 		}
 		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
 		resp.Body.Close()
-		b.healthy.Store(resp.StatusCode < 500)
+		b.recordProbe(resp.StatusCode < 500)
 	}
 
 	for _, b := range p.all {

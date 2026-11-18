@@ -320,3 +320,27 @@ func TestCancelledProbeLeavesHealthAlone(t *testing.T) {
 		t.Fatal("a cancelled probe must not mark the backend down")
 	}
 }
+
+func TestProbeThreshold(t *testing.T) {
+	p := mustPool(t, []config.Backend{{Name: "a", URL: "http://a", Models: []string{"m"}}})
+	b := p.all[0]
+	b.recordProbe(true)
+	b.recordProbe(false)
+	if !b.Healthy() {
+		t.Fatal("one failed probe must not mark a known backend down")
+	}
+	b.recordProbe(false)
+	if b.Healthy() {
+		t.Fatal("two failed probes must mark it down")
+	}
+	b.recordProbe(true)
+	if !b.Healthy() {
+		t.Fatal("a passing probe must restore it")
+	}
+
+	fresh := mustPool(t, []config.Backend{{Name: "a", URL: "http://a", Models: []string{"m"}}}).all[0]
+	fresh.recordProbe(false)
+	if fresh.Healthy() {
+		t.Fatal("a failed first probe must count immediately")
+	}
+}
