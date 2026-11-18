@@ -84,7 +84,7 @@ func TestStoreThenLookupHit(t *testing.T) {
 		EmbeddingModel: "test-embed", MaxDistance: 0.1, TenantID: "t1",
 	})
 
-	if err := c.Store(context.Background(), "s", "what is go", []byte(`{"answer":"a language"}`), "application/json"); err != nil {
+	if err := c.Store(context.Background(), "s", "what is go", nil, []byte(`{"answer":"a language"}`), "application/json"); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestStoreThenLookupHitStreaming(t *testing.T) {
 	})
 
 	sse := "data: chunk-0\n\ndata: chunk-1\n\n"
-	if err := c.Store(context.Background(), "s", "stream me", []byte(sse), "text/event-stream"); err != nil {
+	if err := c.Store(context.Background(), "s", "stream me", nil, []byte(sse), "text/event-stream"); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestLookupMissBeyondMaxDistance(t *testing.T) {
 		NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL,
 		EmbeddingModel: "test-embed", MaxDistance: 0.05, TenantID: "t1",
 	})
-	c.Store(context.Background(), "s", "unrelated prompt", []byte(`{"a":1}`), "application/json")
+	c.Store(context.Background(), "s", "unrelated prompt", nil, []byte(`{"a":1}`), "application/json")
 
 	db.nextScore = 1.2 // large distance: an unrelated vector
 	_, _, hit, err := lookup(c, "something else entirely")
@@ -203,7 +203,7 @@ func TestLookupIgnoresOtherScopes(t *testing.T) {
 	embed := fakeEmbedder(t)
 	defer embed.Close()
 	c := New(Config{NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL, EmbeddingModel: "e", MaxDistance: 0.1, TenantID: "t"})
-	if err := c.Store(context.Background(), "other", "q", []byte("a"), "application/json"); err != nil {
+	if err := c.Store(context.Background(), "other", "q", nil, []byte("a"), "application/json"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, hit, _ := lookup(c, "q"); hit {

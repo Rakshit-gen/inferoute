@@ -178,6 +178,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		messages, cacheable = cache.ParseMessages(parsed.Messages)
 	}
 	var cacheKey, scope string
+	var vector []float32
 	if cacheable {
 		cacheKey = cache.PromptText(messages)
 		scope = cacheScope(r, body)
@@ -187,7 +188,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if err != nil {
 			log.Printf("inferoute: cache lookup: %v", err)
 			metrics.CacheLookups.WithLabelValues("error").Inc()
-		} else if found.Hit {
+		} else if vector = found.Vector; found.Hit {
 			metrics.CacheLookups.WithLabelValues("hit").Inc()
 			w.Header().Set("Content-Type", found.ContentType)
 			w.Header().Set("X-Inferoute-Cache", "hit")
@@ -235,7 +236,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				case h.stores <- struct{}{}:
 					h.storesWG.Go(func() {
 						defer func() { <-h.stores }()
-						h.storeInCache(scope, cacheKey, res.captured, res.contentType)
+						h.storeInCache(scope, cacheKey, vector, res.captured, res.contentType)
 					})
 				default: // the cache is behind; skipping a write only costs a future miss
 				}
@@ -343,10 +344,10 @@ func cacheScope(r *http.Request, body []byte) string {
 	return cache.Scope(r.URL.Path, caller, string(canonical))
 }
 
-func (h *Handler) storeInCache(scope, key string, response []byte, contentType string) {
+func (h *Handler) storeInCache(scope, key string, vector []float32, response []byte, contentType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := h.Cache.Store(ctx, scope, key, response, contentType); err != nil {
+	if err := h.Cache.Store(ctx, scope, key, vector, response, contentType); err != nil {
 		log.Printf("inferoute: cache store: %v", err)
 	}
 }

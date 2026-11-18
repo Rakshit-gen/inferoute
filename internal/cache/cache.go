@@ -106,7 +106,8 @@ func Scope(parts ...string) string {
 type Result struct {
 	Hit         bool
 	Body        []byte
-	ContentType string // text/event-stream for a streamed response
+	ContentType string    // text/event-stream for a streamed response
+	Vector      []float32 // the prompt's embedding, reusable by Store
 }
 
 // Lookup embeds text and returns the nearest entry in scope whose distance
@@ -168,9 +169,9 @@ func (c *Cache) lookup(ctx context.Context, scope, text string) (Result, error) 
 		if ct == "" {
 			ct = "application/json"
 		}
-		return Result{Hit: true, Body: []byte(m.Metadata["response"]), ContentType: ct}, nil
+		return Result{Hit: true, Body: []byte(m.Metadata["response"]), ContentType: ct, Vector: vec}, nil
 	}
-	return Result{}, nil
+	return Result{Vector: vec}, nil
 }
 
 func (c *Cache) expired(storedAt string) bool {
@@ -184,10 +185,13 @@ func (c *Cache) expired(storedAt string) bool {
 // Store embeds text and upserts it into NuclaDB with response and
 // contentType attached as metadata, keyed so an identical prompt in the same
 // scope overwrites in place.
-func (c *Cache) Store(ctx context.Context, scope, text string, response []byte, contentType string) error {
-	vec, err := c.embed(ctx, text)
-	if err != nil {
-		return fmt.Errorf("embedding for cache store: %w", err)
+// vec may carry the embedding from Lookup; nil computes it.
+func (c *Cache) Store(ctx context.Context, scope, text string, vec []float32, response []byte, contentType string) error {
+	if vec == nil {
+		var err error
+		if vec, err = c.embed(ctx, text); err != nil {
+			return fmt.Errorf("embedding for cache store: %w", err)
+		}
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
