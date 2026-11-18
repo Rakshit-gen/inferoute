@@ -512,3 +512,33 @@ func TestNotImplementedIsNotRetried(t *testing.T) {
 		t.Fatalf("status = %d, calls = %d", rec.Code, calls)
 	}
 }
+
+func TestSlowHeadersFailOver(t *testing.T) {
+	a := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body) // lets the server notice the disconnect
+		<-r.Context().Done()
+	})
+	b := upstream(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") })
+	h := New(testPool(t, config.Backend{Name: "a", URL: a, Models: []string{"m"}}, config.Backend{Name: "b", URL: b, Models: []string{"m"}}))
+	h.UpstreamTimeout = 50 * time.Millisecond
+	for i := 0; i < 2; i++ {
+		if rec := post(h, modelBody); rec.Code != 200 {
+			t.Fatalf("status = %d", rec.Code)
+		}
+	}
+}
+
+func TestLongActiveStreamOutlivesTimeouts(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < 5; i++ {
+			fmt.Fprint(w, "x")
+			w.(http.Flusher).Flush()
+			time.Sleep(30 * time.Millisecond)
+		}
+	})
+	h := New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}}))
+	h.UpstreamTimeout, h.StreamIdleTimeout = 100*time.Millisecond, 100*time.Millisecond
+	if rec := post(h, modelBody); rec.Body.String() != "xxxxx" {
+		t.Fatalf("body = %q", rec.Body)
+	}
+}

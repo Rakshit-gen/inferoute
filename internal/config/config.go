@@ -101,6 +101,11 @@ type Config struct {
 	APIKeys []string `json:"api_keys"`
 	// MaxRequestBodyBytes rejects larger request bodies with 413.
 	MaxRequestBodyBytes int64 `json:"max_request_body_bytes"`
+	// UpstreamTimeout limits the wait for a backend's response headers, which
+	// for a non-streaming request means the whole generation.
+	UpstreamTimeout Duration `json:"upstream_timeout"`
+	// StreamIdleTimeout limits the gap between chunks of a response.
+	StreamIdleTimeout Duration `json:"stream_idle_timeout"`
 	// TrustedProxies lists the CIDR ranges of load balancers in front of the
 	// gateway. Only requests arriving from them have X-Forwarded-For believed.
 	TrustedProxies []netip.Prefix `json:"trusted_proxies"`
@@ -166,6 +171,8 @@ func Load(path string) (*Config, error) {
 		HealthCheckInterval: Duration(10 * time.Second),
 		HealthCheckTimeout:  Duration(2 * time.Second),
 		MaxRequestBodyBytes: 16 << 20,
+		UpstreamTimeout:     Duration(5 * time.Minute),
+		StreamIdleTimeout:   Duration(2 * time.Minute),
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -197,6 +204,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"
+	}
+	if cfg.UpstreamTimeout <= 0 || cfg.StreamIdleTimeout <= 0 {
+		return nil, fmt.Errorf("config %s: upstream_timeout and stream_idle_timeout must be positive", path)
 	}
 	if cfg.MaxRequestBodyBytes <= 0 {
 		return nil, fmt.Errorf("config %s: max_request_body_bytes must be positive", path)

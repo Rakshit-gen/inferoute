@@ -37,6 +37,10 @@ type Handler struct {
 	Client *http.Client
 	// MaxBodyBytes limits the size of a request body.
 	MaxBodyBytes int64
+	// UpstreamTimeout limits the wait for a backend's response headers.
+	UpstreamTimeout time.Duration
+	// StreamIdleTimeout limits the gap between response chunks.
+	StreamIdleTimeout time.Duration
 
 	pool    atomic.Pointer[backend.Pool]
 	aliases atomic.Pointer[map[string]string] // requested model -> model backends actually serve
@@ -56,11 +60,10 @@ func New(pool *backend.Pool) *Handler {
 	transport.IdleConnTimeout = 90 * time.Second
 
 	h := &Handler{
-		MaxBodyBytes: DefaultMaxBodyBytes,
-		Client: &http.Client{
-			Timeout:   5 * time.Minute, // generous: covers slow model generations
-			Transport: transport,
-		},
+		MaxBodyBytes:      DefaultMaxBodyBytes,
+		UpstreamTimeout:   5 * time.Minute, // non-streaming generations send headers last
+		StreamIdleTimeout: 2 * time.Minute,
+		Client:            &http.Client{Transport: transport},
 	}
 	h.pool.Store(pool)
 	empty := map[string]string{}
@@ -308,7 +311,14 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	outURL := b.URL.JoinPath(b.PathPrefix, r.URL.EscapedPath())
 	outURL.RawQuery = r.URL.RawQuery
 
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, outURL.String(), bytes.NewReader(body))
+	// One watchdog cancels the attempt: first if headers take too long, then
+	// whenever the stream goes quiet.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	watchdog := time.AfterFunc(h.UpstreamTimeout, cancel)
+	defer watchdog.Stop()
+
+	req, err := http.NewRequestWithContext(ctx, r.Method, outURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return outcome{unreachable: true}
 	}
@@ -341,6 +351,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	flusher, canFlush := w.(http.Flusher)
 	rbuf := make([]byte, 4096)
 	for {
+		watchdog.Reset(h.StreamIdleTimeout)
 		n, readErr := resp.Body.Read(rbuf)
 		if n > 0 {
 			if _, err := w.Write(rbuf[:n]); err != nil {

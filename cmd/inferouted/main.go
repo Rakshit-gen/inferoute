@@ -50,6 +50,8 @@ func main() {
 	h := proxy.New(pool)
 	h.SetAliases(cfg.ModelAliases)
 	h.MaxBodyBytes = cfg.MaxRequestBodyBytes
+	h.UpstreamTimeout = time.Duration(cfg.UpstreamTimeout)
+	h.StreamIdleTimeout = time.Duration(cfg.StreamIdleTimeout)
 
 	// startHealthChecks (re)starts the health-check loop for pool and
 	// returns a function to stop it — called again on a config reload so
