@@ -15,6 +15,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
@@ -637,5 +638,19 @@ func TestCacheIsScopedToModelAndParameters(t *testing.T) {
 	h.Drain(context.Background())
 	if rec := post(h, `{"model":"m",`+chat+`}`); rec.Header().Get("X-Inferoute-Cache") != "hit" {
 		t.Fatal("an identical request should hit")
+	}
+}
+
+func TestCacheIsPrivatePerCaller(t *testing.T) {
+	h := cachedHandler(t, "m")
+	gate := apiauth.New([]string{"key-a", "key-b"}).Middleware(h)
+	body := `{"model":"m",` + chat + `}`
+	post(gate, body, "Authorization", "Bearer key-a")
+	h.Drain(context.Background())
+	if rec := post(gate, body, "Authorization", "Bearer key-b"); rec.Header().Get("X-Inferoute-Cache") == "hit" {
+		t.Fatal("one key must not read another key's cached response")
+	}
+	if rec := post(gate, body, "Authorization", "Bearer key-a"); rec.Header().Get("X-Inferoute-Cache") != "hit" {
+		t.Fatal("the same key should hit")
 	}
 }

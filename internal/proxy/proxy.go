@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/apierr"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
@@ -327,7 +328,11 @@ func cacheScope(r *http.Request, body []byte) string {
 	_ = json.Unmarshal(body, &fields)
 	delete(fields, "messages")
 	canonical, _ := json.Marshal(fields) // map keys are sorted
-	return cache.Scope(r.URL.Path, string(canonical))
+	caller := apiauth.Identity(r.Context())
+	if auth := r.Header.Get("Authorization"); caller == "" && auth != "" {
+		caller = apiauth.Fingerprint(auth)
+	}
+	return cache.Scope(r.URL.Path, caller, string(canonical))
 }
 
 func (h *Handler) storeInCache(scope, key string, response []byte, contentType string) {
