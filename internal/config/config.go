@@ -183,7 +183,12 @@ func Load(path string) (*Config, error) {
 	if len(cfg.Backends) == 0 {
 		return nil, fmt.Errorf("config %s: no backends configured", path)
 	}
+	urlByName := make(map[string]string, len(cfg.Backends))
 	for i, b := range cfg.Backends {
+		if prev, ok := urlByName[b.Name]; ok && prev != b.URL {
+			return nil, fmt.Errorf("config %s: backend name %q is used for two different urls", path, b.Name)
+		}
+		urlByName[b.Name] = b.URL
 		if b.Name == "" || b.URL == "" || len(b.Models) == 0 {
 			return nil, fmt.Errorf("config %s: backends[%d] missing name, url, or models", path, i)
 		}

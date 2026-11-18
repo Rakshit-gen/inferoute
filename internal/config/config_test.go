@@ -90,3 +90,7 @@ func TestRejectsBadBackendFields(t *testing.T) {
 		})
 	}
 }
+
+func TestRejectsDuplicateBackendName(t *testing.T) {
+	wantErr(t, `{"backends":[{"name":"a","url":"http://x","models":["m"]},{"name":"a","url":"http://y","models":["n"]}]}`, "two different urls")
+}
