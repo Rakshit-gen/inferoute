@@ -249,8 +249,7 @@ func (h *Handler) storeInCache(key string, response []byte, contentType string) 
 // stream, verbatim) is also returned in captured, along with the response's
 // content type, for the caller to cache.
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Backend, body []byte, tee bool) (ok bool, status int, captured []byte, contentType string) {
-	outURL := *b.URL
-	outURL.Path = b.PathPrefix + r.URL.Path
+	outURL := b.URL.JoinPath(b.PathPrefix, r.URL.EscapedPath())
 	outURL.RawQuery = r.URL.RawQuery
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, outURL.String(), bytes.NewReader(body))

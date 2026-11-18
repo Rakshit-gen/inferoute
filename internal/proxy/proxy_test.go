@@ -432,3 +432,12 @@ func TestBackendCannotSetGatewayHeaders(t *testing.T) {
 		t.Fatalf("headers = %v", h)
 	}
 }
+
+func TestKeepsBackendBasePath(t *testing.T) {
+	var got string
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { got = r.URL.Path })
+	post(New(testPool(t, config.Backend{Name: "a", URL: url + "/base", PathPrefix: "/openai", Models: []string{"m"}})), modelBody)
+	if got != "/base/openai/v1/chat/completions" {
+		t.Fatalf("path = %q", got)
+	}
+}
