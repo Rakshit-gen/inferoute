@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+
+	"github.com/Rakshit-gen/inferoute/internal/apierr"
 )
 
 // Gate holds the current allowlist. It is safe for concurrent use and its
@@ -60,7 +62,8 @@ func (g *Gate) Allowed(presented string) bool {
 func (g *Gate) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !g.Allowed(bearer(r)) {
-			http.Error(w, "unauthorized: a valid API key is required", http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			apierr.Write(w, http.StatusUnauthorized, apierr.Authentication, "invalid_api_key", "a valid API key is required")
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -82,3 +82,11 @@ func TestBearerParsing(t *testing.T) {
 		}
 	}
 }
+
+func TestUnauthorizedResponseShape(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New([]string{"k"}).Middleware(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/x", nil))
+	if rec.Header().Get("WWW-Authenticate") != "Bearer" || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("headers = %v", rec.Header())
+	}
+}
