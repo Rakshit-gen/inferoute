@@ -98,3 +98,17 @@ func TestNewRedisRejectsBadURLWithoutEchoingIt(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestRedisOutageStillLimits(t *testing.T) {
+	l := newRedis(t, "127.0.0.1:1", 1, 1)
+	if !l.Allow("k") {
+		t.Fatal("first request should pass through the local fallback")
+	}
+	start := time.Now()
+	if l.Allow("k") {
+		t.Fatal("the local fallback must enforce the limit")
+	}
+	if time.Since(start) > 50*time.Millisecond {
+		t.Fatal("Redis should be skipped right after a failure")
+	}
+}
