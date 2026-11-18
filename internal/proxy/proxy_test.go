@@ -418,3 +418,17 @@ func TestUpstreamHeadersDropCookies(t *testing.T) {
 		t.Fatalf("headers = %v", out)
 	}
 }
+
+func TestBackendCannotSetGatewayHeaders(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Set-Cookie", "a=b")
+		w.Header().Set("X-Inferoute-Cache", "hit")
+		w.Header().Set("X-Other", "kept")
+	})
+	rec := post(New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}})), modelBody)
+	h := rec.Header()
+	if h.Get("Access-Control-Allow-Origin") != "" || h.Get("Set-Cookie") != "" || h.Get("X-Inferoute-Cache") != "" || h.Get("X-Other") != "kept" {
+		t.Fatalf("headers = %v", h)
+	}
+}

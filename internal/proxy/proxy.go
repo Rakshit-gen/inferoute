@@ -223,7 +223,11 @@ func upstreamHeaders(in http.Header) http.Header {
 func copyResponseHeaders(dst, src http.Header) {
 	src = src.Clone()
 	stripHop(src)
+	src.Del("Set-Cookie")
 	for k, vs := range src {
+		if strings.HasPrefix(k, "Access-Control-") || strings.HasPrefix(k, "X-Inferoute-") {
+			continue
+		}
 		dst[k] = append(dst[k], vs...)
 	}
 }
