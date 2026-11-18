@@ -109,7 +109,8 @@ func main() {
 	}
 	if rdb := dialRedis(); rdb != nil {
 		rdb.Close()
-		redisRL := ratelimit.NewRedis(redisAddr(), 1e9, 1e9)
+		redisRL, err := ratelimit.NewRedis(redisAddr(), 1e9, 1e9)
+		must("connect redis limiter", err)
 		gwRedisRLURL := serve(proxyMux(ratelimit.Middleware(redisRL, h)))
 		results = append(results, run("proxy: + rate limit (Redis, token bucket)", client, gwRedisRLURL, authHdr, *conns, *warmup, *duration))
 	} else {

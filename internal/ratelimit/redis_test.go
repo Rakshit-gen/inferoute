@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestRedisLimiterAllowsThenRejectsBurst(t *testing.T) {
 	requireRedis(t)
 	key := "test-key-" + time.Now().Format(time.RFC3339Nano)
 
-	l := NewRedis("localhost:6379", 1, 2)
+	l := newRedis(t, "localhost:6379", 1, 2)
 	handler := apiauth.New([]string{key}).Middleware(Middleware(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))
@@ -60,7 +61,7 @@ func TestRedisLimiterAllowsThenRejectsBurst(t *testing.T) {
 func TestRedisLimiterHonoursSubOneRate(t *testing.T) {
 	requireRedis(t)
 	key := "sub-one-" + time.Now().Format(time.RFC3339Nano)
-	l := NewRedis("localhost:6379", 0.5, 1)
+	l := newRedis(t, "localhost:6379", 0.5, 1)
 	if !l.Allow(key) {
 		t.Fatal("first request should pass")
 	}
@@ -72,12 +73,28 @@ func TestRedisLimiterHonoursSubOneRate(t *testing.T) {
 func TestRedisLimiterRefills(t *testing.T) {
 	requireRedis(t)
 	key := "refill-" + time.Now().Format(time.RFC3339Nano)
-	l := NewRedis("localhost:6379", 20, 1)
+	l := newRedis(t, "redis://localhost:6379/0", 20, 1)
 	if !l.Allow(key) || l.Allow(key) {
 		t.Fatal("expected one token, then none")
 	}
 	time.Sleep(120 * time.Millisecond)
 	if !l.Allow(key) {
 		t.Fatal("expected a refilled token")
+	}
+}
+
+func newRedis(t *testing.T, addr string, rps float64, burst int) *RedisLimiter {
+	t.Helper()
+	l, err := NewRedis(addr, rps, burst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+func TestNewRedisRejectsBadURLWithoutEchoingIt(t *testing.T) {
+	_, err := NewRedis("redis://user:hunter2@host:notaport", 1, 1)
+	if err == nil || strings.Contains(err.Error(), "hunter2") {
+		t.Fatalf("err = %v", err)
 	}
 }

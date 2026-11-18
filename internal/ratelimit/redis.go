@@ -2,7 +2,9 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -42,12 +44,21 @@ type RedisLimiter struct {
 // RetryAfter implements Allower.
 func (r *RedisLimiter) RetryAfter() time.Duration { return tokenInterval(r.rps) }
 
-func NewRedis(addr string, requestsPerSecond float64, burst int) *RedisLimiter {
+// NewRedis connects to addr, either host:port or a redis:// or rediss:// URL.
+func NewRedis(addr string, requestsPerSecond float64, burst int) (*RedisLimiter, error) {
+	opts := &redis.Options{Addr: addr}
+	if strings.Contains(addr, "://") {
+		var err error
+		if opts, err = redis.ParseURL(addr); err != nil {
+			// The parser's error can quote the URL, which holds the password.
+			return nil, errors.New("rate_limit.redis_addr is not a valid redis URL")
+		}
+	}
 	return &RedisLimiter{
-		rdb:   redis.NewClient(&redis.Options{Addr: addr}),
+		rdb:   redis.NewClient(opts),
 		rps:   requestsPerSecond,
 		burst: max(burst, 1),
-	}
+	}, nil
 }
 
 // Allow fails open on Redis errors: an unreachable rate-limit store

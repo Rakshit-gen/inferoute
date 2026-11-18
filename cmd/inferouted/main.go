@@ -76,8 +76,11 @@ func main() {
 	if cfg.RateLimit.Enabled {
 		var limiter ratelimit.Allower
 		if cfg.RateLimit.RedisAddr != "" {
-			limiter = ratelimit.NewRedis(cfg.RateLimit.RedisAddr, cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
-			log.Printf("inferouted: rate limiting enabled at %.1f req/s, burst %d, per API key, shared via redis at %s", cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst, cfg.RateLimit.RedisAddr)
+			limiter, err = ratelimit.NewRedis(cfg.RateLimit.RedisAddr, cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
+			if err != nil {
+				log.Fatalf("inferouted: %v", err)
+			}
+			log.Printf("inferouted: rate limiting enabled at %.1f req/s, burst %d, per API key, shared via redis", cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
 		} else {
 			limiter = ratelimit.New(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
 			log.Printf("inferouted: rate limiting enabled at %.1f req/s, burst %d, per API key", cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
