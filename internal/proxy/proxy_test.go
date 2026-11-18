@@ -367,3 +367,12 @@ func TestRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+func TestForwardsMultimodalMessages(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"ok":true}`) })
+	h := New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}}))
+	body := `{"model":"m","messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:x"}}]}]}`
+	if rec := post(h, body); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+}

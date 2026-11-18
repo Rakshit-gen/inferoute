@@ -203,3 +203,52 @@ type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
+
+// ParseMessages decodes a chat "messages" array for caching. ok is false when
+// any message is more than text (images, tool calls), since the embedded
+// prompt could not represent it and a match would be wrong.
+func ParseMessages(raw json.RawMessage) (messages []Message, ok bool) {
+	var parsed []struct {
+		Role       string          `json:"role"`
+		Content    json.RawMessage `json:"content"`
+		ToolCalls  json.RawMessage `json:"tool_calls"`
+		ToolCallID string          `json:"tool_call_id"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed) == 0 {
+		return nil, false
+	}
+	for _, m := range parsed {
+		if len(m.ToolCalls) > 0 || m.ToolCallID != "" {
+			return nil, false
+		}
+		text, ok := textContent(m.Content)
+		if !ok {
+			return nil, false
+		}
+		messages = append(messages, Message{Role: m.Role, Content: text})
+	}
+	return messages, true
+}
+
+// textContent accepts a string or an array made up only of text parts.
+func textContent(raw json.RawMessage) (string, bool) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, true
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return "", false
+	}
+	texts := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p.Type != "text" {
+			return "", false
+		}
+		texts = append(texts, p.Text)
+	}
+	return strings.Join(texts, "\n"), true
+}

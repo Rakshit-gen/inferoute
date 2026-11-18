@@ -163,3 +163,26 @@ func TestPromptTextJoinsMessages(t *testing.T) {
 		t.Fatalf("PromptText = %q, want %q", got, want)
 	}
 }
+
+func TestParseMessages(t *testing.T) {
+	for name, tt := range map[string]struct {
+		raw  string
+		ok   bool
+		text string
+	}{
+		"string":      {`[{"role":"user","content":"hi"}]`, true, "hi"},
+		"text parts":  {`[{"role":"user","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]}]`, true, "a\nb"},
+		"image":       {`[{"role":"user","content":[{"type":"image_url","image_url":{"url":"x"}}]}]`, false, ""},
+		"tool call":   {`[{"role":"assistant","content":null,"tool_calls":[{"id":"1"}]}]`, false, ""},
+		"tool result": {`[{"role":"tool","tool_call_id":"1","content":"r"}]`, false, ""},
+		"empty":       {`[]`, false, ""},
+		"not array":   {`"x"`, false, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			msgs, ok := ParseMessages(json.RawMessage(tt.raw))
+			if ok != tt.ok || (ok && msgs[0].Content != tt.text) {
+				t.Fatalf("msgs = %+v, ok = %v", msgs, ok)
+			}
+		})
+	}
+}

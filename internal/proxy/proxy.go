@@ -108,8 +108,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var parsed struct {
 		Model    string          `json:"model"`
-		Stream   bool            `json:"stream"`
-		Messages []cache.Message `json:"messages"`
+		Messages json.RawMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Model == "" {
 		apierr.Write(w, http.StatusBadRequest, apierr.InvalidRequest, "invalid_body", `request body must be JSON with a "model" field`)
@@ -133,10 +132,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer metrics.ObserveDuration(model, start)
 
-	cacheable := h.Cache != nil && len(parsed.Messages) > 0
+	var messages []cache.Message
+	cacheable := false
+	if h.Cache != nil {
+		messages, cacheable = cache.ParseMessages(parsed.Messages)
+	}
 	var cacheKey string
 	if cacheable {
-		cacheKey = cache.PromptText(parsed.Messages)
+		cacheKey = cache.PromptText(messages)
 		if cached, ct, hit, err := h.Cache.Lookup(r.Context(), cacheKey); err != nil {
 			log.Printf("inferoute: cache lookup: %v", err)
 			metrics.CacheLookups.WithLabelValues("error").Inc()
