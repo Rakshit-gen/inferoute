@@ -234,6 +234,18 @@ func Load(path string) (*Config, error) {
 		if cfg.Cache.NuclaDBAddr == "" || cfg.Cache.EmbeddingBackendAddr == "" || cfg.Cache.EmbeddingModel == "" {
 			return nil, fmt.Errorf("config %s: cache.enabled requires nucladb_addr, embedding_backend_addr, and embedding_model", path)
 		}
+		for field, addr := range map[string]string{
+			"nucladb_addr":           cfg.Cache.NuclaDBAddr,
+			"embedding_backend_addr": cfg.Cache.EmbeddingBackendAddr,
+		} {
+			if err := checkHTTPURL(addr); err != nil {
+				return nil, fmt.Errorf("config %s: cache.%s: %w", path, field, err)
+			}
+		}
+		// Cosine distance runs from 0 (identical) to 2 (opposite).
+		if cfg.Cache.MaxDistance < 0 || cfg.Cache.MaxDistance > 2 {
+			return nil, fmt.Errorf("config %s: cache.max_distance must be between 0 and 2", path)
+		}
 		if cfg.Cache.MaxDistance == 0 {
 			cfg.Cache.MaxDistance = 0.05
 		}

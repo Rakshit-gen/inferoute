@@ -108,3 +108,9 @@ func TestRejectsBadRateLimit(t *testing.T) {
 	wantErr(t, `{"rate_limit":{"enabled":true},`+oneBackend+`}`, "requests_per_second")
 	wantErr(t, `{"rate_limit":{"enabled":true,"requests_per_second":1,"burst":-1},`+oneBackend+`}`, "burst")
 }
+
+func TestRejectsBadCache(t *testing.T) {
+	ok := `"enabled":true,"nucladb_addr":"http://n","embedding_backend_addr":"http://e","embedding_model":"m"`
+	wantErr(t, `{"cache":{"enabled":true,"nucladb_addr":"n:1","embedding_backend_addr":"http://e","embedding_model":"m"},`+oneBackend+`}`, "nucladb_addr")
+	wantErr(t, `{"cache":{`+ok+`,"max_distance":3},`+oneBackend+`}`, "max_distance")
+}
