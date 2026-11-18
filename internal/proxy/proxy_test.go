@@ -576,3 +576,66 @@ func TestShedsLoadAtCapacity(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+// memoryCache is an in-memory NuclaDB and embedder where every vector is
+// identical, so only the cache's own scoping can keep entries apart.
+func memoryCache(t *testing.T) *cache.Cache {
+	t.Helper()
+	var mu sync.Mutex
+	stored := map[string]map[string]string{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"embedding":[1,0]}`)
+	})
+	mux.HandleFunc("POST /v1/vectors", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ID       string            `json:"id"`
+			Metadata map[string]string `json:"metadata"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		defer mu.Unlock()
+		stored[body.ID] = body.Metadata
+	})
+	mux.HandleFunc("POST /v1/search", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		matches := []map[string]any{}
+		for _, md := range stored {
+			matches = append(matches, map[string]any{"score": 0, "metadata": md})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"matches": matches})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return cache.New(cache.Config{NuclaDBAddr: srv.URL, EmbeddingBackendAddr: srv.URL, EmbeddingModel: "e", MaxDistance: 0.05, TenantID: "t"})
+}
+
+func cachedHandler(t *testing.T, models ...string) *Handler {
+	t.Helper()
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"ok":true}`) })
+	h := New(testPool(t, config.Backend{Name: "a", URL: url, Models: models}))
+	h.Cache = memoryCache(t)
+	return h
+}
+
+const chat = `"messages":[{"role":"user","content":"hi"}]`
+
+func TestCacheIsScopedToModelAndParameters(t *testing.T) {
+	h := cachedHandler(t, "m", "n")
+	post(h, `{"model":"m",`+chat+`}`)
+	h.Drain(context.Background())
+	for _, body := range []string{
+		`{"model":"n",` + chat + `}`,
+		`{"model":"m","temperature":1,` + chat + `}`,
+		`{"model":"m","stream":true,` + chat + `}`,
+	} {
+		if rec := post(h, body); rec.Header().Get("X-Inferoute-Cache") == "hit" {
+			t.Fatalf("%s must not hit another request's entry", body)
+		}
+	}
+	h.Drain(context.Background())
+	if rec := post(h, `{"model":"m",`+chat+`}`); rec.Header().Get("X-Inferoute-Cache") != "hit" {
+		t.Fatal("an identical request should hit")
+	}
+}

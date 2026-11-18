@@ -176,18 +176,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.Cache != nil {
 		messages, cacheable = cache.ParseMessages(parsed.Messages)
 	}
-	var cacheKey string
+	var cacheKey, scope string
 	if cacheable {
 		cacheKey = cache.PromptText(messages)
-		if cached, ct, hit, err := h.Cache.Lookup(r.Context(), cacheKey); err != nil {
+		scope = cacheScope(r, body)
+		if found, err := h.Cache.Lookup(r.Context(), scope, cacheKey); err != nil {
 			log.Printf("inferoute: cache lookup: %v", err)
 			metrics.CacheLookups.WithLabelValues("error").Inc()
-		} else if hit {
+		} else if found.Hit {
 			metrics.CacheLookups.WithLabelValues("hit").Inc()
-			w.Header().Set("Content-Type", ct)
+			w.Header().Set("Content-Type", found.ContentType)
 			w.Header().Set("X-Inferoute-Cache", "hit")
 			w.Header().Set("X-Inferoute-Backend", "cache")
-			w.Write(cached)
+			w.Write(found.Body)
 			metrics.RequestsTotal.WithLabelValues(model, "cache", "200").Inc()
 			return
 		} else {
@@ -230,7 +231,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				case h.stores <- struct{}{}:
 					h.storesWG.Go(func() {
 						defer func() { <-h.stores }()
-						h.storeInCache(cacheKey, res.captured, res.contentType)
+						h.storeInCache(scope, cacheKey, res.captured, res.contentType)
 					})
 				default: // the cache is behind; skipping a write only costs a future miss
 				}
@@ -318,10 +319,21 @@ func (h *Handler) Drain(ctx context.Context) {
 	}
 }
 
-func (h *Handler) storeInCache(key string, response []byte, contentType string) {
+// cacheScope covers everything that changes the answer other than the
+// messages: the endpoint and all other body fields, including the resolved
+// model and stream flag.
+func cacheScope(r *http.Request, body []byte) string {
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(body, &fields)
+	delete(fields, "messages")
+	canonical, _ := json.Marshal(fields) // map keys are sorted
+	return cache.Scope(r.URL.Path, string(canonical))
+}
+
+func (h *Handler) storeInCache(scope, key string, response []byte, contentType string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := h.Cache.Store(ctx, key, response, contentType); err != nil {
+	if err := h.Cache.Store(ctx, scope, key, response, contentType); err != nil {
 		log.Printf("inferoute: cache store: %v", err)
 	}
 }

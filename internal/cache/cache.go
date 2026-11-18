@@ -19,9 +19,11 @@ package cache
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net/http"
 	"strconv"
@@ -72,32 +74,47 @@ func (c *Cache) EnsureTenant(ctx context.Context) error {
 	return nil
 }
 
-// Lookup embeds text and returns the cached response body (and the content
-// type it was originally served with — text/event-stream for a streamed
-// response, application/json otherwise) for the nearest match if its
-// distance is within MaxDistance.
-func (c *Cache) Lookup(ctx context.Context, text string) (body []byte, contentType string, hit bool, err error) {
+// searchDepth is how many neighbours are checked for one in the right scope.
+const searchDepth = 10
+
+// Scope derives the partition a request's entries live in. Only requests
+// with the same scope may share a cached response.
+func Scope(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// Result is the outcome of a Lookup.
+type Result struct {
+	Hit         bool
+	Body        []byte
+	ContentType string // text/event-stream for a streamed response
+}
+
+// Lookup embeds text and returns the nearest entry in scope whose distance
+// is within MaxDistance.
+func (c *Cache) Lookup(ctx context.Context, scope, text string) (Result, error) {
 	vec, err := c.embed(ctx, text)
 	if err != nil {
-		return nil, "", false, fmt.Errorf("embedding for cache lookup: %w", err)
+		return Result{}, fmt.Errorf("embedding for cache lookup: %w", err)
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"query": vec, "top_k": 1, "tenant_id": c.cfg.TenantID,
+		"query": vec, "top_k": searchDepth, "tenant_id": c.cfg.TenantID,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.NuclaDBAddr+"/v1/search", bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, "", false, err
+		return Result{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, "", false, fmt.Errorf("searching cache: %w", err)
+		return Result{}, fmt.Errorf("searching cache: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, "", false, fmt.Errorf("searching cache: %s: %s", resp.Status, b)
+		return Result{}, fmt.Errorf("searching cache: %s: %s", resp.Status, b)
 	}
 
 	var result struct {
@@ -107,32 +124,35 @@ func (c *Cache) Lookup(ctx context.Context, text string) (body []byte, contentTy
 		} `json:"matches"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, "", false, fmt.Errorf("decoding cache search response: %w", err)
+		return Result{}, fmt.Errorf("decoding cache search response: %w", err)
 	}
-	if len(result.Matches) == 0 || result.Matches[0].Score > c.cfg.MaxDistance {
-		return nil, "", false, nil
+	for _, m := range result.Matches {
+		if m.Score > c.cfg.MaxDistance || m.Metadata["scope"] != scope {
+			continue
+		}
+		ct := m.Metadata["content_type"]
+		if ct == "" {
+			ct = "application/json"
+		}
+		return Result{Hit: true, Body: []byte(m.Metadata["response"]), ContentType: ct}, nil
 	}
-	ct := result.Matches[0].Metadata["content_type"]
-	if ct == "" {
-		ct = "application/json" // cache entries written before content_type existed
-	}
-	return []byte(result.Matches[0].Metadata["response"]), ct, true, nil
+	return Result{}, nil
 }
 
 // Store embeds text and upserts it into NuclaDB with response and
-// contentType attached as metadata, keyed by a hash of text so identical
-// prompts overwrite in place.
-func (c *Cache) Store(ctx context.Context, text string, response []byte, contentType string) error {
+// contentType attached as metadata, keyed so an identical prompt in the same
+// scope overwrites in place.
+func (c *Cache) Store(ctx context.Context, scope, text string, response []byte, contentType string) error {
 	vec, err := c.embed(ctx, text)
 	if err != nil {
 		return fmt.Errorf("embedding for cache store: %w", err)
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"id":        idFor(text),
+		"id":        idFor(scope, text),
 		"values":    vec,
 		"tenant_id": c.cfg.TenantID,
-		"metadata":  map[string]string{"response": string(response), "prompt": text, "content_type": contentType},
+		"metadata":  map[string]string{"response": string(response), "prompt": text, "content_type": contentType, "scope": scope},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.NuclaDBAddr+"/v1/vectors", bytes.NewReader(reqBody))
 	if err != nil {
@@ -151,12 +171,10 @@ func (c *Cache) Store(ctx context.Context, text string, response []byte, content
 	return nil
 }
 
-// idFor derives a NuclaDB vector id (a decimal uint64) from prompt text, so
-// identical prompts overwrite the same vector in place.
-func idFor(text string) string {
-	h := fnv.New64a()
-	h.Write([]byte(text))
-	return strconv.FormatUint(h.Sum64(), 10)
+// idFor derives a NuclaDB vector id (a decimal uint64) from scope and text.
+func idFor(scope, text string) string {
+	sum := sha256.Sum256([]byte(scope + "\x00" + text))
+	return strconv.FormatUint(binary.BigEndian.Uint64(sum[:8]), 10)
 }
 
 // embed calls an Ollama-compatible /api/embeddings endpoint.

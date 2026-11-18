@@ -80,12 +80,12 @@ func TestStoreThenLookupHit(t *testing.T) {
 		EmbeddingModel: "test-embed", MaxDistance: 0.1, TenantID: "t1",
 	})
 
-	if err := c.Store(context.Background(), "what is go", []byte(`{"answer":"a language"}`), "application/json"); err != nil {
+	if err := c.Store(context.Background(), "s", "what is go", []byte(`{"answer":"a language"}`), "application/json"); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
 	db.nextScore = 0.01 // near-zero distance: essentially the same vector
-	got, ct, hit, err := c.Lookup(context.Background(), "what is go")
+	got, ct, hit, err := lookup(c, "what is go")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)
 	}
@@ -113,12 +113,12 @@ func TestStoreThenLookupHitStreaming(t *testing.T) {
 	})
 
 	sse := "data: chunk-0\n\ndata: chunk-1\n\n"
-	if err := c.Store(context.Background(), "stream me", []byte(sse), "text/event-stream"); err != nil {
+	if err := c.Store(context.Background(), "s", "stream me", []byte(sse), "text/event-stream"); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
 
 	db.nextScore = 0.01
-	got, ct, hit, err := c.Lookup(context.Background(), "stream me")
+	got, ct, hit, err := lookup(c, "stream me")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)
 	}
@@ -144,10 +144,10 @@ func TestLookupMissBeyondMaxDistance(t *testing.T) {
 		NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL,
 		EmbeddingModel: "test-embed", MaxDistance: 0.05, TenantID: "t1",
 	})
-	c.Store(context.Background(), "unrelated prompt", []byte(`{"a":1}`), "application/json")
+	c.Store(context.Background(), "s", "unrelated prompt", []byte(`{"a":1}`), "application/json")
 
 	db.nextScore = 1.2 // large distance: an unrelated vector
-	_, _, hit, err := c.Lookup(context.Background(), "something else entirely")
+	_, _, hit, err := lookup(c, "something else entirely")
 	if err != nil {
 		t.Fatalf("Lookup: %v", err)
 	}
@@ -184,5 +184,25 @@ func TestParseMessages(t *testing.T) {
 				t.Fatalf("msgs = %+v, ok = %v", msgs, ok)
 			}
 		})
+	}
+}
+
+func lookup(c *Cache, text string) ([]byte, string, bool, error) {
+	r, err := c.Lookup(context.Background(), "s", text)
+	return r.Body, r.ContentType, r.Hit, err
+}
+
+func TestLookupIgnoresOtherScopes(t *testing.T) {
+	db := newFakeNuclaDB()
+	dbSrv := httptest.NewServer(db.handler())
+	defer dbSrv.Close()
+	embed := fakeEmbedder(t)
+	defer embed.Close()
+	c := New(Config{NuclaDBAddr: dbSrv.URL, EmbeddingBackendAddr: embed.URL, EmbeddingModel: "e", MaxDistance: 0.1, TenantID: "t"})
+	if err := c.Store(context.Background(), "other", "q", []byte("a"), "application/json"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, hit, _ := lookup(c, "q"); hit {
+		t.Fatal("an entry from another scope must not hit")
 	}
 }
