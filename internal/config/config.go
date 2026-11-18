@@ -126,9 +126,9 @@ func Load(path string) (*Config, error) {
 	if len(cfg.Backends) == 0 {
 		return nil, fmt.Errorf("config %s: no backends configured", path)
 	}
-	for _, b := range cfg.Backends {
+	for i, b := range cfg.Backends {
 		if b.Name == "" || b.URL == "" || len(b.Models) == 0 {
-			return nil, fmt.Errorf("config %s: backend %+v missing name, url, or models", path, b)
+			return nil, fmt.Errorf("config %s: backends[%d] missing name, url, or models", path, i)
 		}
 	}
 

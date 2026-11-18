@@ -48,3 +48,10 @@ func TestRejectsUnknownField(t *testing.T) {
 func TestRejectsTrailingData(t *testing.T) {
 	wantErr(t, `{`+oneBackend+`} {}`, "unexpected data")
 }
+
+func TestBackendErrorOmitsAPIKey(t *testing.T) {
+	_, err := load(t, `{"backends":[{"name":"a","api_key":"sk-secret"}]}`)
+	if err == nil || strings.Contains(err.Error(), "sk-secret") {
+		t.Fatalf("error must exist and omit the key, got %v", err)
+	}
+}
