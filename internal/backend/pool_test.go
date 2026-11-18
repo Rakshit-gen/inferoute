@@ -311,3 +311,12 @@ func TestHealthCheckSendsAPIKey(t *testing.T) {
 		t.Fatalf("Authorization = %q", got)
 	}
 }
+
+func TestCancelledProbeLeavesHealthAlone(t *testing.T) {
+	url := probeServer(t, func(w http.ResponseWriter, r *http.Request) { time.Sleep(300 * time.Millisecond) })
+	p := mustPool(t, []config.Backend{{Name: "a", URL: url, Models: []string{"m"}}})
+	runProbes(t, p, "/")
+	if !p.all[0].healthy.Load() {
+		t.Fatal("a cancelled probe must not mark the backend down")
+	}
+}

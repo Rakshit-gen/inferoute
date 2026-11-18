@@ -277,7 +277,9 @@ func (p *Pool) StartHealthChecks(ctx context.Context, path string, interval time
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			b.healthy.Store(false)
+			if ctx.Err() == nil {
+				b.healthy.Store(false)
+			}
 			return
 		}
 		_, _ = io.CopyN(io.Discard, resp.Body, 64<<10)
