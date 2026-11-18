@@ -99,6 +99,8 @@ type Config struct {
 	// default) leaves the proxy open, matching inferoute's default posture.
 	// Reloaded on SIGHUP alongside backends.
 	APIKeys []string `json:"api_keys"`
+	// MaxRequestBodyBytes rejects larger request bodies with 413.
+	MaxRequestBodyBytes int64 `json:"max_request_body_bytes"`
 	// TrustedProxies lists the CIDR ranges of load balancers in front of the
 	// gateway. Only requests arriving from them have X-Forwarded-For believed.
 	TrustedProxies []netip.Prefix `json:"trusted_proxies"`
@@ -163,6 +165,7 @@ func Load(path string) (*Config, error) {
 	cfg := &Config{
 		HealthCheckInterval: Duration(10 * time.Second),
 		HealthCheckTimeout:  Duration(2 * time.Second),
+		MaxRequestBodyBytes: 16 << 20,
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -194,6 +197,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.HealthCheckPath == "" {
 		cfg.HealthCheckPath = "/"
+	}
+	if cfg.MaxRequestBodyBytes <= 0 {
+		return nil, fmt.Errorf("config %s: max_request_body_bytes must be positive", path)
 	}
 	if cfg.HealthCheckInterval <= 0 {
 		return nil, fmt.Errorf("config %s: health_check_interval must be positive", path)

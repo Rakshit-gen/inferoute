@@ -25,9 +25,17 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/metrics"
 )
 
+const (
+	// DefaultMaxBodyBytes fits large prompts and inline images.
+	DefaultMaxBodyBytes = 16 << 20
+	bodyReadTimeout     = 30 * time.Second
+)
+
 type Handler struct {
 	Cache  *cache.Cache // nil disables semantic caching
 	Client *http.Client
+	// MaxBodyBytes limits the size of a request body.
+	MaxBodyBytes int64
 
 	pool    atomic.Pointer[backend.Pool]
 	aliases atomic.Pointer[map[string]string] // requested model -> model backends actually serve
@@ -47,6 +55,7 @@ func New(pool *backend.Pool) *Handler {
 	transport.IdleConnTimeout = 90 * time.Second
 
 	h := &Handler{
+		MaxBodyBytes: DefaultMaxBodyBytes,
 		Client: &http.Client{
 			Timeout:   5 * time.Minute, // generous: covers slow model generations
 			Transport: transport,
@@ -80,8 +89,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, http.StatusMethodNotAllowed, apierr.InvalidRequest, "method_not_allowed", "this endpoint accepts POST")
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	// A deadline on the body alone: http.Server.ReadTimeout would also cancel
+	// the request while a slow generation is running.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(bodyReadTimeout))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.MaxBodyBytes))
+	_ = rc.SetReadDeadline(time.Time{})
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			apierr.Write(w, http.StatusRequestEntityTooLarge, apierr.InvalidRequest, "request_too_large", "request body is too large")
+			return
+		}
 		apierr.Write(w, http.StatusBadRequest, apierr.InvalidRequest, "invalid_body", "could not read the request body")
 		return
 	}

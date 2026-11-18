@@ -359,3 +359,11 @@ func TestErrorsAreJSON(t *testing.T) {
 		t.Fatalf("body = %s, err = %v", rec.Body, err)
 	}
 }
+
+func TestRejectsOversizedBody(t *testing.T) {
+	h := New(testPool(t, config.Backend{Name: "a", URL: "http://a", Models: []string{"m"}}))
+	h.MaxBodyBytes = 8
+	if rec := post(h, modelBody); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
