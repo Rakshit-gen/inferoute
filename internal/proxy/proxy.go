@@ -189,8 +189,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		res := h.forward(w, r, b, body, cacheable)
 		release()
 		if res.wrote {
-			pool.ReportSuccess(b)
 			metrics.RequestsTotal.WithLabelValues(model, b.Name, strconv.Itoa(res.status)).Inc()
+			if res.broken {
+				pool.ReportFailure(b)
+				log.Printf("inferoute: backend %s failed mid-response", b.Name)
+				if r.Context().Value(http.ServerContextKey) != nil {
+					panic(http.ErrAbortHandler) // makes the truncation visible to the client
+				}
+				return
+			}
+			pool.ReportSuccess(b)
 			if cacheable && res.status == http.StatusOK && len(res.captured) > 0 {
 				go h.storeInCache(cacheKey, res.captured, res.contentType)
 			}
@@ -282,6 +290,7 @@ type outcome struct {
 	status      int
 	captured    []byte
 	contentType string
+	broken      bool             // the backend failed after the response started
 	failure     *upstreamFailure // set when the backend answered with an error
 }
 
@@ -368,6 +377,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 			}
 		}
 		if readErr != nil {
+			res.broken = readErr != io.EOF && r.Context().Err() == nil
 			if tee {
 				res.captured, res.contentType = buf.Bytes(), ct
 			}

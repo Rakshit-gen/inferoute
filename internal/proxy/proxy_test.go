@@ -542,3 +542,21 @@ func TestLongActiveStreamOutlivesTimeouts(t *testing.T) {
 		t.Fatalf("body = %q", rec.Body)
 	}
 }
+
+func TestBrokenStreamAbortsClientConnection(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "partial")
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	})
+	gw := httptest.NewServer(New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}})))
+	defer gw.Close()
+	resp, err := http.Post(gw.URL+"/v1/chat/completions", "application/json", strings.NewReader(modelBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err == nil {
+		t.Fatal("the client must see the truncated response as an error")
+	}
+}
