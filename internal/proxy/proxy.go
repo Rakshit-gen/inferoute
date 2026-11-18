@@ -166,6 +166,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const maxAttempts = 3
 	var lastErr error
 	var tried []*backend.Backend
+	var failure *upstreamFailure
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		b, release, err := pool.Next(model, tried...)
 		if err != nil {
@@ -195,12 +196,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		lastErr = errors.New("backend " + b.Name + " failed")
-		if res.unreachable {
+		if res.failure != nil {
+			failure = res.failure
+		}
+		switch {
+		case res.unreachable:
 			pool.MarkUnhealthy(b)
-		} else {
+		case res.failure.status != http.StatusTooManyRequests: // 429 means busy, not broken
 			pool.ReportFailure(b)
 		}
 		log.Printf("inferoute: %s, retrying (attempt %d/%d)", lastErr, attempt+1, maxAttempts)
+	}
+	if failure != nil {
+		metrics.RequestsTotal.WithLabelValues(model, failure.backend, strconv.Itoa(failure.status)).Inc()
+		copyResponseHeaders(w.Header(), failure.header)
+		w.Header().Del("Content-Length") // the kept body may be truncated
+		w.Header().Set("X-Inferoute-Backend", failure.backend)
+		w.WriteHeader(failure.status)
+		_, _ = w.Write(failure.body)
+		return
 	}
 	metrics.RequestsTotal.WithLabelValues(model, "none", "502").Inc()
 	apierr.Write(w, http.StatusBadGateway, apierr.Server, "all_backends_failed", "all backends failed: "+lastErr.Error())
@@ -262,7 +276,20 @@ type outcome struct {
 	status      int
 	captured    []byte
 	contentType string
+	failure     *upstreamFailure // set when the backend answered with an error
 }
+
+// upstreamFailure is a retryable error response, kept to relay if no other
+// backend succeeds.
+type upstreamFailure struct {
+	status  int
+	header  http.Header
+	body    []byte
+	backend string
+}
+
+// maxFailureBody bounds how much of an error response is kept.
+const maxFailureBody = 64 << 10
 
 // forward sends the request to b and streams the response to w. Unless wrote
 // is set in the result, nothing has reached the client and the caller can
@@ -287,8 +314,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 500 {
-		return outcome{}
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxFailureBody))
+		return outcome{failure: &upstreamFailure{resp.StatusCode, resp.Header, errBody, b.Name}}
 	}
 
 	ct := resp.Header.Get("Content-Type")

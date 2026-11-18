@@ -474,3 +474,32 @@ func TestSingle5xxKeepsBackendInRotation(t *testing.T) {
 		t.Fatal("one 5xx must not eject the backend")
 	}
 }
+
+func Test429FailsOverWithoutEjecting(t *testing.T) {
+	a := upstream(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(429) })
+	b := upstream(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") })
+	pool := testPool(t, config.Backend{Name: "a", URL: a, Models: []string{"m"}}, config.Backend{Name: "b", URL: b, Models: []string{"m"}})
+	h := New(pool)
+	for i := 0; i < 4; i++ {
+		if rec := post(h, modelBody); rec.Code != 200 {
+			t.Fatalf("status = %d", rec.Code)
+		}
+	}
+	for _, s := range pool.Snapshot() {
+		if !s.Healthy {
+			t.Fatalf("%s was ejected by 429s", s.Name)
+		}
+	}
+}
+
+func TestRelaysLastUpstreamError(t *testing.T) {
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(503)
+		fmt.Fprint(w, `{"error":"loading model"}`)
+	})
+	rec := post(New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}})), modelBody)
+	if rec.Code != 503 || rec.Header().Get("Retry-After") != "7" || !strings.Contains(rec.Body.String(), "loading model") {
+		t.Fatalf("status = %d, headers = %v, body = %s", rec.Code, rec.Header(), rec.Body)
+	}
+}
