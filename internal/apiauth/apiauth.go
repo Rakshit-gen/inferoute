@@ -4,6 +4,7 @@
 package apiauth
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -13,7 +14,7 @@ import (
 // Gate holds the current allowlist. It is safe for concurrent use and its
 // key set can be swapped at runtime (SIGHUP reload).
 type Gate struct {
-	keys atomic.Pointer[[]string]
+	keys atomic.Pointer[[][sha256.Size]byte]
 }
 
 func New(keys []string) *Gate {
@@ -24,8 +25,11 @@ func New(keys []string) *Gate {
 
 // Set replaces the allowlist.
 func (g *Gate) Set(keys []string) {
-	cp := append([]string(nil), keys...)
-	g.keys.Store(&cp)
+	hashes := make([][sha256.Size]byte, len(keys))
+	for i, k := range keys {
+		hashes[i] = sha256.Sum256([]byte(k))
+	}
+	g.keys.Store(&hashes)
 }
 
 // Required reports whether any key is configured (i.e. auth is enforced).
@@ -41,11 +45,12 @@ func (g *Gate) Allowed(presented string) bool {
 	if presented == "" {
 		return false
 	}
+	sum := sha256.Sum256([]byte(presented))
 	match := 0
-	for _, k := range keys {
-		// Compare every key (no early return) so a caller can't learn which
-		// key prefix matched from response timing.
-		match |= subtle.ConstantTimeCompare([]byte(k), []byte(presented))
+	for i := range keys {
+		// Compare every key (no early return) so timing reveals nothing
+		// about which key matched.
+		match |= subtle.ConstantTimeCompare(keys[i][:], sum[:])
 	}
 	return match == 1
 }
