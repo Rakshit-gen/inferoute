@@ -40,3 +40,11 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("HealthCheckInterval = %v", cfg.HealthCheckInterval)
 	}
 }
+
+func TestRejectsUnknownField(t *testing.T) {
+	wantErr(t, `{"api_key":["k"],`+oneBackend+`}`, "api_key")
+}
+
+func TestRejectsTrailingData(t *testing.T) {
+	wantErr(t, `{`+oneBackend+`} {}`, "unexpected data")
+}

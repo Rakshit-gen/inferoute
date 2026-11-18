@@ -3,6 +3,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -97,8 +98,13 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{HealthCheckInterval: Duration(10 * time.Second)}
-	if err := json.Unmarshal(data, cfg); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("parsing config %s: unexpected data after the JSON object", path)
 	}
 	if cfg.LoadBalancing == "" {
 		cfg.LoadBalancing = "round_robin"
