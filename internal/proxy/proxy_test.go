@@ -455,3 +455,13 @@ func TestClientDisconnectLeavesBackendHealthy(t *testing.T) {
 		t.Fatalf("healthy = %v, calls = %d", pool.Snapshot()[0].Healthy, calls)
 	}
 }
+
+func TestEachBackendTriedOnce(t *testing.T) {
+	calls := 0
+	url := upstream(t, func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) })
+	h := New(testPool(t, config.Backend{Name: "a", URL: url, Models: []string{"m"}}))
+	post(h, modelBody)
+	if calls != 1 {
+		t.Fatalf("calls = %d", calls)
+	}
+}

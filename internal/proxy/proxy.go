@@ -165,15 +165,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	const maxAttempts = 3
 	var lastErr error
+	var tried []*backend.Backend
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		b, release, err := pool.Next(model)
+		b, release, err := pool.Next(model, tried...)
 		if err != nil {
+			if attempt > 0 {
+				break // every available backend has been tried
+			}
 			metrics.RequestsTotal.WithLabelValues(model, "none", "503").Inc()
 			w.Header().Set("Retry-After", "1")
 			apierr.Write(w, http.StatusServiceUnavailable, apierr.Server, "no_backend_available", err.Error())
 			return
 		}
 
+		tried = append(tried, b)
 		res := h.forward(w, r, b, body, cacheable)
 		release()
 		if res.wrote {
