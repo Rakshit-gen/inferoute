@@ -213,6 +213,9 @@ func stripHop(h http.Header) {
 func upstreamHeaders(in http.Header) http.Header {
 	out := in.Clone()
 	stripHop(out)
+	out.Del("Cookie")
+	out.Del("Expect")
+	out.Set("Content-Type", "application/json") // the body was parsed as JSON
 	return out
 }
 

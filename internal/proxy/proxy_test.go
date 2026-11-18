@@ -411,3 +411,10 @@ func TestUpstreamHeadersDropHopByHop(t *testing.T) {
 		t.Fatalf("headers = %v", out)
 	}
 }
+
+func TestUpstreamHeadersDropCookies(t *testing.T) {
+	out := upstreamHeaders(http.Header{"Cookie": {"s=1"}, "Content-Type": {"application/x-www-form-urlencoded"}})
+	if out.Get("Cookie") != "" || out.Get("Content-Type") != "application/json" {
+		t.Fatalf("headers = %v", out)
+	}
+}
