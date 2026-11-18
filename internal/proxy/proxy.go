@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 	// DefaultMaxBodyBytes fits large prompts and inline images.
 	DefaultMaxBodyBytes = 16 << 20
 	bodyReadTimeout     = 30 * time.Second
+	maxCacheWrites      = 16
 )
 
 type Handler struct {
@@ -42,6 +44,9 @@ type Handler struct {
 	UpstreamTimeout time.Duration
 	// StreamIdleTimeout limits the gap between response chunks.
 	StreamIdleTimeout time.Duration
+
+	stores   chan struct{} // limits concurrent background cache writes
+	storesWG sync.WaitGroup
 
 	pool    atomic.Pointer[backend.Pool]
 	aliases atomic.Pointer[map[string]string] // requested model -> model backends actually serve
@@ -67,6 +72,7 @@ func New(pool *backend.Pool) *Handler {
 		UpstreamTimeout:   5 * time.Minute, // non-streaming generations send headers last
 		StreamIdleTimeout: 2 * time.Minute,
 		Client:            &http.Client{Transport: transport},
+		stores:            make(chan struct{}, maxCacheWrites),
 	}
 	h.pool.Store(pool)
 	empty := map[string]string{}
@@ -200,7 +206,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			pool.ReportSuccess(b)
 			if cacheable && res.status == http.StatusOK && len(res.captured) > 0 {
-				go h.storeInCache(cacheKey, res.captured, res.contentType)
+				select {
+				case h.stores <- struct{}{}:
+					h.storesWG.Go(func() {
+						defer func() { <-h.stores }()
+						h.storeInCache(cacheKey, res.captured, res.contentType)
+					})
+				default: // the cache is behind; skipping a write only costs a future miss
+				}
 			}
 			return
 		}
@@ -272,6 +285,16 @@ func copyResponseHeaders(dst, src http.Header) {
 			continue
 		}
 		dst[k] = append(dst[k], vs...)
+	}
+}
+
+// Drain waits for background cache writes to finish or ctx to end.
+func (h *Handler) Drain(ctx context.Context) {
+	done := make(chan struct{})
+	go func() { h.storesWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
 	}
 }
 
