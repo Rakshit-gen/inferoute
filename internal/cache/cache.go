@@ -61,6 +61,8 @@ const (
 )
 
 func New(cfg Config) *Cache {
+	cfg.NuclaDBAddr = strings.TrimRight(cfg.NuclaDBAddr, "/")
+	cfg.EmbeddingBackendAddr = strings.TrimRight(cfg.EmbeddingBackendAddr, "/")
 	if cfg.LookupTimeout <= 0 {
 		cfg.LookupTimeout = 2 * time.Second
 	}
