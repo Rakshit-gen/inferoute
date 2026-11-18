@@ -378,7 +378,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 		}
 		if readErr != nil {
 			res.broken = readErr != io.EOF && r.Context().Err() == nil
-			if tee {
+			if tee && readErr == io.EOF {
 				res.captured, res.contentType = buf.Bytes(), ct
 			}
 			return res
