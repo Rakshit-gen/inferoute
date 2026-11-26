@@ -10,3 +10,4 @@ bin/
 /web/out
 /web/next-env.d.ts
 /web/*.tsbuildinfo
+dist/
