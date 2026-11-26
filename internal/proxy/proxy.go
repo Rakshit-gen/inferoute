@@ -173,6 +173,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer metrics.ObserveDuration(model, start)
 
+	var prefixes []uint64
+	if pool.Strategy() == backend.PrefixAffinity {
+		prefixes = messagePrefixes(parsed.Messages)
+	}
+
 	var messages []cache.Message
 	cacheable := false
 	if h.Cache != nil && !bypassesCache(r) {
@@ -207,7 +212,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var tried []*backend.Backend
 	var failure *upstreamFailure
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		b, release, err := pool.Next(model, tried...)
+		b, release, err := pool.NextFor(model, prefixes, tried...)
 		if err != nil {
 			if attempt > 0 {
 				break // every available backend has been tried
@@ -325,6 +330,21 @@ func (h *Handler) Drain(ctx context.Context) {
 	case <-done:
 	case <-ctx.Done():
 	}
+}
+
+// messagePrefixes hashes each prefix of a chat request's messages, for
+// prefix-affinity routing. A conversation's next turn repeats every earlier
+// message, so its prefixes match the ones its previous turn was routed with.
+func messagePrefixes(raw json.RawMessage) []uint64 {
+	var msgs []json.RawMessage
+	if json.Unmarshal(raw, &msgs) != nil {
+		return nil
+	}
+	parts := make([][]byte, len(msgs))
+	for i, m := range msgs {
+		parts[i] = m
+	}
+	return backend.HashPrefixes(parts)
 }
 
 func bypassesCache(r *http.Request) bool {

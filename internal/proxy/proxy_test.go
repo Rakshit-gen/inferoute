@@ -664,3 +664,42 @@ func TestNoStoreBypassesCache(t *testing.T) {
 		t.Fatal("no-store must skip the cache")
 	}
 }
+
+func TestMessagePrefixesMatchAcrossTurns(t *testing.T) {
+	turn1 := messagePrefixes(json.RawMessage(`[{"role":"system","content":"be brief"},{"role":"user","content":"hi"}]`))
+	turn2 := messagePrefixes(json.RawMessage(`[{"role":"system","content":"be brief"},{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"more"}]`))
+	if len(turn1) != 2 || len(turn2) != 4 || turn1[1] != turn2[1] {
+		t.Fatalf("turn 2 does not extend turn 1: %v %v", turn1, turn2)
+	}
+	if messagePrefixes(json.RawMessage(`"not a list"`)) != nil {
+		t.Fatal("non-list messages produced prefixes")
+	}
+}
+
+func TestPrefixAffinityKeepsConversationOnOneBackend(t *testing.T) {
+	var backends []config.Backend
+	for _, name := range []string{"a", "b", "c"} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{}`) }))
+		defer srv.Close()
+		backends = append(backends, config.Backend{Name: name, URL: srv.URL, Models: []string{"llama3"}})
+	}
+	pool, err := backend.NewPool(backends, backend.PrefixAffinity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(pool)
+	served := func(msgs string) string {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"llama3","messages":`+msgs+`}`))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Header().Get("X-Inferoute-Backend")
+	}
+	for c := range 20 {
+		first := fmt.Sprintf(`{"role":"user","content":"conversation %d"}`, c)
+		want := served("[" + first + "]")
+		got := served("[" + first + `,{"role":"assistant","content":"ok"},{"role":"user","content":"next"}]`)
+		if got != want {
+			t.Fatalf("conversation %d: turn 1 on %s, turn 2 on %s", c, want, got)
+		}
+	}
+}
