@@ -29,13 +29,23 @@ var (
 
 	Rejected = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "inferoute_rejected_requests_total",
-		Help: "Requests refused by the gateway, by reason: unauthorized, rate_limited, or overloaded.",
+		Help: "Requests refused by the gateway, by reason: unauthorized, rate_limited, token_budget, or overloaded.",
 	}, []string{"reason"})
 
 	CacheWrites = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "inferoute_cache_writes_total",
 		Help: "Semantic cache writes by outcome: stored, error, or dropped.",
 	}, []string{"outcome"})
+
+	Tokens = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "inferoute_tokens_total",
+		Help: "Tokens backends reported using, by model, backend, caller and type (prompt or completion). caller is the first 12 hex characters of the SHA-256 of the caller's API key, or anonymous.",
+	}, []string{"model", "backend", "caller", "type"})
+
+	Unmetered = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "inferoute_unmetered_responses_total",
+		Help: "Successful backend responses that reported no token usage.",
+	}, []string{"model"})
 
 	CacheLookups = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "inferoute_cache_lookups_total",
