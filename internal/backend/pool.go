@@ -1,6 +1,6 @@
 // Package backend tracks a set of inference backends grouped by the models
 // they serve, health-checks them, and hands out the next healthy one for a
-// given model in round-robin order.
+// given model according to the configured load-balancing strategy.
 package backend
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -21,9 +22,10 @@ import (
 
 // Load-balancing strategies, as accepted in the "load_balancing" config key.
 const (
-	RoundRobin   = "round_robin"
-	LeastPending = "least_pending"
-	Weighted     = "weighted"
+	RoundRobin     = "round_robin"
+	LeastPending   = "least_pending"
+	Weighted       = "weighted"
+	PrefixAffinity = "prefix_affinity"
 )
 
 // Errors returned by Next. They are wrapped with the model name.
@@ -50,6 +52,8 @@ type Backend struct {
 	probeFails   atomic.Int32 // consecutive failed health checks
 	failures     atomic.Int32 // consecutive failed requests
 	ejectedUntil atomic.Int64 // unix nanos; no traffic before this time
+
+	prefixes prefixMemory // prefix_affinity: what this backend was recently sent
 }
 
 // ejectCooldown is how long a backend receives no traffic after failing.
@@ -73,7 +77,8 @@ type Pool struct {
 }
 
 // NewPool builds a pool from specs. strategy is one of RoundRobin (the
-// default when empty or unrecognised), LeastPending, or Weighted.
+// default when empty or unrecognised), LeastPending, Weighted, or
+// PrefixAffinity.
 func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 	p := &Pool{
 		HealthTimeout: 2 * time.Second,
@@ -83,8 +88,11 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 		counters: make(map[string]*atomic.Uint64),
 		strategy: RoundRobin,
 	}
-	if len(strategy) > 0 && (strategy[0] == LeastPending || strategy[0] == Weighted) {
-		p.strategy = strategy[0]
+	if len(strategy) > 0 {
+		switch strategy[0] {
+		case LeastPending, Weighted, PrefixAffinity:
+			p.strategy = strategy[0]
+		}
 	}
 	seen := make(map[string]*Backend)
 	for _, s := range specs {
@@ -112,13 +120,24 @@ func NewPool(specs []config.Backend, strategy ...string) (*Pool, error) {
 	return p, nil
 }
 
+// Strategy returns the pool's load-balancing strategy.
+func (p *Pool) Strategy() string { return p.strategy }
+
 // Next returns a healthy backend serving model, chosen by the pool's
 // load-balancing strategy, plus a release func the caller must call once it
 // has finished proxying to that backend, which frees its in-flight slot. It
-// returns an
-// error if no backend serves the model or all of them are currently
-// unhealthy. Backends in exclude are not considered.
+// returns an error if no backend serves the model or all of them are
+// currently unhealthy. Backends in exclude are not considered.
 func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error) {
+	return p.NextFor(model, nil, exclude...)
+}
+
+// NextFor is Next for a chat request whose message prefixes hash to
+// prefixes, where prefixes[i] covers messages 0..i. Under PrefixAffinity the
+// request goes to the backend that most recently served its longest prefix,
+// while that backend is healthy and not overloaded. Without prefixes it falls
+// back to LeastPending. Other strategies ignore prefixes.
+func (p *Pool) NextFor(model string, prefixes []uint64, exclude ...*Backend) (*Backend, func(), error) {
 	candidates := p.byModel[model]
 	if len(candidates) == 0 {
 		return nil, nil, fmt.Errorf("%w: %q", ErrUnknownModel, model)
@@ -136,6 +155,13 @@ func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error)
 			b = pickLeastPending(candidates, p.counters[model].Add(1))
 		case Weighted:
 			b = pickWeighted(candidates)
+		case PrefixAffinity:
+			if len(prefixes) > 0 {
+				b = pickByPrefix(candidates, prefixes)
+			}
+			if b == nil { // no prefixes, or loads moved mid-pick
+				b = pickLeastPending(candidates, p.counters[model].Add(1))
+			}
 		default:
 			b = p.pickRoundRobin(model, candidates)
 		}
@@ -143,6 +169,9 @@ func (p *Pool) Next(model string, exclude ...*Backend) (*Backend, func(), error)
 			return nil, nil, fmt.Errorf("%w: %q", ErrUnavailable, model)
 		}
 		if b.acquire() {
+			if p.strategy == PrefixAffinity && len(prefixes) > 0 {
+				b.prefixes.add(prefixes)
+			}
 			return b, func() { b.inflight.Add(-1) }, nil
 		}
 		candidates = slices.DeleteFunc(slices.Clone(candidates), func(c *Backend) bool { return c == b })
@@ -206,6 +235,132 @@ func pickWeighted(candidates []*Backend) *Backend {
 		}
 	}
 	return nil
+}
+
+// affinityLoadFactor bounds how far above the average in-flight count a
+// backend may run and still be picked for its cached prefixes. Past it,
+// requests go to their next best backend. This is consistent hashing with
+// bounded loads (Mirrokni et al., 2016): a prefix every caller shares, such
+// as one system prompt, cannot pin all traffic to one backend.
+const affinityLoadFactor = 1.25
+
+// pickByPrefix picks, among healthy backends under the load bound, the one
+// that was most recently sent the longest prefix of this request, as a
+// stand-in for whose KV cache already holds it. Ties go to the backend with
+// fewer requests in flight, then to a rendezvous hash of the whole request,
+// so a fresh conversation lands somewhere deterministic.
+func pickByPrefix(candidates []*Backend, prefixes []uint64) *Backend {
+	var total int64
+	healthy := 0
+	for _, b := range candidates {
+		if b.Healthy() {
+			total += b.inflight.Load()
+			healthy++
+		}
+	}
+	if healthy == 0 {
+		return nil
+	}
+	limit := int64(math.Ceil(affinityLoadFactor * float64(total+1) / float64(healthy)))
+	whole := prefixes[len(prefixes)-1]
+	var best *Backend
+	var bestDepth int
+	var bestLoad int64
+	var bestScore uint64
+	for _, b := range candidates {
+		load := b.inflight.Load()
+		if !b.Healthy() || load+1 > limit {
+			continue
+		}
+		depth := b.prefixes.depth(prefixes)
+		score := mix64(whole ^ hashString(b.Name))
+		if best == nil || depth > bestDepth ||
+			depth == bestDepth && (load < bestLoad || load == bestLoad && score > bestScore) {
+			best, bestDepth, bestLoad, bestScore = b, depth, load, score
+		}
+	}
+	return best
+}
+
+// prefixMemorySize is how many prefix hashes each backend remembers per
+// generation. A backend's real cache may hold more or less; a stale entry
+// only costs the cache miss any other strategy would have had.
+const prefixMemorySize = 8192
+
+// prefixMemory holds the prefix hashes recently routed to one backend. Two
+// generations approximate an LRU: when the current one fills, the previous
+// one is dropped and anything still in use has been promoted out of it.
+type prefixMemory struct {
+	mu        sync.Mutex
+	cur, prev map[uint64]struct{}
+}
+
+// depth returns how many leading prefixes, counted from the longest one
+// remembered, this backend has seen: i+1 for the largest i found.
+func (m *prefixMemory) depth(prefixes []uint64) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := len(prefixes) - 1; i >= 0; i-- {
+		if _, ok := m.cur[prefixes[i]]; ok {
+			return i + 1
+		}
+		if _, ok := m.prev[prefixes[i]]; ok {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func (m *prefixMemory) add(prefixes []uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, h := range prefixes {
+		if m.cur == nil || len(m.cur) >= prefixMemorySize {
+			m.prev, m.cur = m.cur, make(map[uint64]struct{}, prefixMemorySize)
+		}
+		m.cur[h] = struct{}{}
+	}
+}
+
+// FNV-1a constants, also used by HashPrefixes.
+const (
+	fnvOffset = 14695981039346656037
+	fnvPrime  = 1099511628211
+)
+
+// hashString is 64-bit FNV-1a.
+func hashString(s string) uint64 {
+	h := uint64(fnvOffset)
+	for i := 0; i < len(s); i++ {
+		h = (h ^ uint64(s[i])) * fnvPrime
+	}
+	return h
+}
+
+// HashPrefixes returns, for each message, a hash of that message and every
+// one before it. Each hash chains the previous one, so equal hashes mean an
+// equal prefix and the whole slice costs one pass over the messages.
+func HashPrefixes(messages [][]byte) []uint64 {
+	out := make([]uint64, len(messages))
+	h := uint64(fnvOffset)
+	for i, m := range messages {
+		for _, c := range m {
+			h = (h ^ uint64(c)) * fnvPrime
+		}
+		h = (h ^ 0xff) * fnvPrime // message boundary
+		out[i] = h
+	}
+	return out
+}
+
+// mix64 is the splitmix64 finalizer. FNV alone mixes too little for
+// rendezvous scores built from XORed hashes.
+func mix64(x uint64) uint64 {
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	return x ^ x>>31
 }
 
 func weightOf(b *Backend) int {

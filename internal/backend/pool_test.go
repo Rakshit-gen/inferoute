@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -370,5 +371,119 @@ func TestProbeTimeoutMarksDown(t *testing.T) {
 	p.CheckAll(context.Background(), "/")
 	if p.all[0].Healthy() {
 		t.Fatal("a probe past its timeout must fail")
+	}
+}
+
+func affinityPool(t *testing.T, n int) *Pool {
+	t.Helper()
+	var specs []config.Backend
+	for i := range n {
+		name := string(rune('a' + i))
+		specs = append(specs, config.Backend{Name: name, URL: "http://" + name, Models: []string{"llama3"}})
+	}
+	return mustPool(t, specs, PrefixAffinity)
+}
+
+// turns returns the message prefixes of a conversation after n turns, each
+// turn adding a reply and a new user message.
+func turns(conversation string, n int) []uint64 {
+	msgs := [][]byte{[]byte("user: " + conversation)}
+	for i := 1; i < n; i++ {
+		msgs = append(msgs, []byte("assistant: ok"), []byte(fmt.Sprintf("user: %s turn %d", conversation, i)))
+	}
+	return HashPrefixes(msgs)
+}
+
+func pick(t *testing.T, p *Pool, prefixes []uint64) *Backend {
+	t.Helper()
+	b, release, err := p.NextFor("llama3", prefixes)
+	if err != nil {
+		t.Fatalf("NextFor: %v", err)
+	}
+	release()
+	return b
+}
+
+func TestHashPrefixesChain(t *testing.T) {
+	a := HashPrefixes([][]byte{[]byte("x"), []byte("y")})
+	b := HashPrefixes([][]byte{[]byte("x"), []byte("y"), []byte("z")})
+	if a[0] != b[0] || a[1] != b[1] {
+		t.Fatal("a shared prefix hashed differently")
+	}
+	if c := HashPrefixes([][]byte{[]byte("xy")}); c[0] == a[1] {
+		t.Fatal("message boundaries are not part of the hash")
+	}
+}
+
+func TestAffinityFollowsConversationAndSpreadsNewOnes(t *testing.T) {
+	p := affinityPool(t, 4)
+	seen := map[string]int{}
+	for c := range 400 {
+		conv := fmt.Sprintf("conversation-%d", c)
+		first := pick(t, p, turns(conv, 1))
+		for n := 2; n <= 4; n++ {
+			if again := pick(t, p, turns(conv, n)); again != first {
+				t.Fatalf("%s turn %d moved from %s to %s", conv, n, first.Name, again.Name)
+			}
+		}
+		seen[first.Name]++
+	}
+	for name, n := range seen {
+		if n < 60 || n > 140 { // 100 each on average
+			t.Fatalf("new conversations spread unevenly: %s got %d of 400 (%v)", name, n, seen)
+		}
+	}
+}
+
+func TestAffinityOnlyMovesConversationsOfARemovedBackend(t *testing.T) {
+	p := affinityPool(t, 4)
+	before := map[string]*Backend{}
+	for c := range 200 {
+		conv := fmt.Sprintf("conversation-%d", c)
+		before[conv] = pick(t, p, turns(conv, 1))
+	}
+	gone := p.all[2]
+	gone.healthy.Store(false)
+	for conv, was := range before {
+		now := pick(t, p, turns(conv, 2))
+		if was != gone && now != was {
+			t.Fatalf("%s moved from healthy %s to %s", conv, was.Name, now.Name)
+		}
+		if now == gone {
+			t.Fatalf("%s still routed to unhealthy %s", conv, gone.Name)
+		}
+	}
+}
+
+func TestAffinitySpillsWhenPreferredIsOverloaded(t *testing.T) {
+	p := affinityPool(t, 2)
+	preferred := pick(t, p, turns("hot", 1))
+	preferred.inflight.Store(10) // the other backend is idle
+	if b := pick(t, p, turns("hot", 2)); b == preferred {
+		t.Fatalf("overloaded %s kept the conversation", preferred.Name)
+	}
+}
+
+func TestAffinityWithoutPrefixesUsesLeastPending(t *testing.T) {
+	p := affinityPool(t, 2)
+	p.all[0].inflight.Store(5)
+	for range 4 {
+		if b := pick(t, p, nil); b != p.all[1] {
+			t.Fatalf("request without messages went to busy backend %s", b.Name)
+		}
+	}
+}
+
+func TestPrefixMemoryForgetsOldestGeneration(t *testing.T) {
+	var m prefixMemory
+	m.add([]uint64{1})
+	for i := range 2 * prefixMemorySize {
+		m.add([]uint64{uint64(i + 10)})
+	}
+	if m.depth([]uint64{1}) != 0 {
+		t.Fatal("entry survived two full generations")
+	}
+	if m.depth([]uint64{99, uint64(2*prefixMemorySize + 9)}) != 2 {
+		t.Fatal("most recent entry forgotten")
 	}
 }

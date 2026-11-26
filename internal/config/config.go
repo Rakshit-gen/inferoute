@@ -87,8 +87,9 @@ type Config struct {
 	Cache               Cache     `json:"cache"`
 	// LoadBalancing picks which backend serves each request among the
 	// healthy ones for a model: "round_robin" (default, even rotation),
-	// "least_pending" (fewest in-flight requests), or "weighted" (random,
-	// biased by each backend's Weight).
+	// "least_pending" (fewest in-flight requests), "weighted" (random,
+	// biased by each backend's Weight), or "prefix_affinity" (the same
+	// conversation goes to the same backend, so its KV cache is reused).
 	LoadBalancing string `json:"load_balancing"`
 	// ModelAliases maps a requested model name to the model name backends
 	// actually serve, e.g. {"gpt-4": "llama3"} routes gpt-4 requests to
@@ -201,9 +202,9 @@ func Load(path string) (*Config, error) {
 		cfg.LoadBalancing = "round_robin"
 	}
 	switch cfg.LoadBalancing {
-	case "round_robin", "least_pending", "weighted":
+	case "round_robin", "least_pending", "weighted", "prefix_affinity":
 	default:
-		return nil, fmt.Errorf("config %s: unknown load_balancing %q (want round_robin, least_pending, or weighted)", path, cfg.LoadBalancing)
+		return nil, fmt.Errorf("config %s: unknown load_balancing %q (want round_robin, least_pending, weighted, or prefix_affinity)", path, cfg.LoadBalancing)
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8081"
