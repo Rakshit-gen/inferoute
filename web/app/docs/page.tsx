@@ -82,7 +82,7 @@ const concepts: [string, React.ReactNode][] = [
   ],
   [
     'Load balancing',
-    'The rule for picking among a model\'s healthy backends, set by "load_balancing" in the config. round_robin (default) spreads requests evenly, one after another. least_pending sends each request to the backend with the fewest in-flight right now. weighted picks at random, biased by each backend\'s "weight".',
+    'The rule for picking among a model\'s healthy backends, set by "load_balancing" in the config. round_robin (default) spreads requests evenly, one after another. least_pending sends each request to the backend with the fewest in-flight right now. weighted picks at random, biased by each backend\'s "weight". prefix_affinity sends a chat request to the backend that already served the longest part of its conversation, so the engine\'s prefix cache is reused, unless that backend is running more than 1.25x the average load.',
   ],
   [
     'Failover',
@@ -118,7 +118,7 @@ const configFields: [string, React.ReactNode][] = [
   ],
   [
     'load_balancing',
-    'How to pick among a model\'s healthy backends: "round_robin" (default, even rotation), "least_pending" (fewest in-flight requests, best when request durations vary), or "weighted" (random, biased by each backend\'s "weight").',
+    'How to pick among a model\'s healthy backends: "round_robin" (default, even rotation), "least_pending" (fewest in-flight requests, best when request durations vary), "weighted" (random, biased by each backend\'s "weight"), or "prefix_affinity" (the backend that already served the longest part of the conversation, for engines with prefix caching).',
   ],
   ['rate_limit.enabled', 'Turn per-key rate limiting on or off. Off by default.'],
   [
@@ -594,7 +594,7 @@ inferouted -config config.example.json`}</Pre>
       <H2 id="limits">Current limitations</H2>
       <P>Things inferoute does not do yet, so you can plan around them:</P>
       <ul className="mt-3 space-y-2 text-sm text-ink-dim">
-        <li>Load balancing is round_robin, least_pending, or weighted. There is no true latency-aware routing (least_pending approximates it by in-flight count).</li>
+        <li>Load balancing is round_robin, least_pending, weighted, or prefix_affinity. There is no true latency-aware routing (least_pending approximates it by in-flight count).</li>
         <li>
           Flaky backends are only handled coarsely: three 5xx responses in a row remove one for 15
           seconds. There is no error-rate based circuit breaker.

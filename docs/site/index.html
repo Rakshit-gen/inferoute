@@ -162,7 +162,7 @@
         client at inferoute the same way you'd point it at OpenAI, and it
         load-balances requests across whichever LLM backends you give it
         (several Ollama or vLLM instances, or a hosted provider like Groq)
-        by round-robin, least-pending, or weighted strategy, fails over on
+        by round-robin, least-pending, weighted, or prefix-affinity strategy, fails over on
         error, streams responses through unbuffered, and optionally caches
         repeat requests so they never hit a backend twice.
       </p>
@@ -277,7 +277,7 @@ $ inferouted -h                            <span class="dim"># prints usage and 
         <tr><td><code>backends[].path_prefix</code></td><td>Prepended to the client's request path, for backends that mount their API under a path (Groq's OpenAI-compatible endpoint lives under <code>/openai</code>).</td></tr>
         <tr><td><code>backends[].api_key</code></td><td>Sent as that backend's <code>Authorization: Bearer</code> header, overriding whatever the client sent, for gatewaying a hosted provider behind a key callers shouldn't need to know.</td></tr>
         <tr><td><code>backends[].weight</code></td><td>Biases the <code>weighted</code> load-balancing strategy toward beefier backends (default 1, ignored by the others).</td></tr>
-        <tr><td><code>load_balancing</code></td><td>How to pick a backend among the healthy ones for a model: <code>round_robin</code> (default), <code>least_pending</code> (fewest in-flight requests), or <code>weighted</code> (random, biased by <code>weight</code>).</td></tr>
+        <tr><td><code>load_balancing</code></td><td>How to pick a backend among the healthy ones for a model: <code>round_robin</code> (default), <code>least_pending</code> (fewest in-flight requests), <code>weighted</code> (random, biased by <code>weight</code>), or <code>prefix_affinity</code> (send a chat request to the backend that already served the longest part of its conversation, so its prefix cache is reused, unless that backend has more than 1.25x the average in-flight requests).</td></tr>
         <tr><td><code>rate_limit.enabled</code>, <code>.requests_per_second</code>, <code>.burst</code></td><td>Per-API-key token bucket (<code>Authorization: Bearer &lt;key&gt;</code>, falling back to remote IP). Off by default.</td></tr>
         <tr><td><code>rate_limit.redis_addr</code></td><td>Leave empty for a per-instance limiter. Set to share limit state across a fleet of inferoute instances via Redis.</td></tr>
         <tr><td><code>cache.enabled</code>, <code>.nucladb_addr</code></td><td>Semantic response caching, backed by a running <a href="https://github.com/Rakshit-gen/NuclaDB">NuclaDB</a> instance. Off by default.</td></tr>

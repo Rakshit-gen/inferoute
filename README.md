@@ -2,9 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An OpenAI-compatible inference gateway written in Go: it round-robins
+An OpenAI-compatible inference gateway written in Go: it load-balances
 requests across multiple LLM backends serving the same model (e.g. several
-Ollama or vLLM instances), health-checks them, fails over to the next
+Ollama or vLLM instances), keeping each conversation on the backend whose
+KV cache already holds it, health-checks them, fails over to the next
 healthy one on error, streams SSE responses straight through unbuffered,
 rate-limits per API key (in-process or shared across instances via Redis),
 and semantically caches responses — streaming included — using
@@ -181,7 +182,7 @@ one). Plain-English rundown of each section:
 | `listen_addr` | The address inferoute itself listens on, e.g. `:8081`. |
 | `health_check_path`, `health_check_interval` | Which path to `GET` on each backend to check it's alive, and how often. |
 | `backends` | The list of servers to route to. Each entry is `{name, url, models, path_prefix, api_key, weight}` — `models` is the list of model names that backend can serve (two backends listing the same model get load-balanced between); `path_prefix` is prepended to the client's request path for backends that mount their API under a path (e.g. Groq's OpenAI-compatible endpoint lives under `/openai`, so `path_prefix: "/openai"` turns a client's `/v1/chat/completions` into `/openai/v1/chat/completions`); `api_key`, if set, is sent as that backend's `Authorization: Bearer` header, overriding whatever the client sent — for gatewaying a hosted provider behind a key callers shouldn't need to know; `weight` biases the `weighted` load-balancing strategy toward beefier backends (default 1, ignored by the other strategies). All optional. |
-| `load_balancing` | How to pick a backend among the healthy ones for a model: `round_robin` (default, even rotation), `least_pending` (fewest in-flight requests: best when request durations vary a lot), or `weighted` (random, biased by each backend's `weight`). |
+| `load_balancing` | How to pick a backend among the healthy ones for a model: `round_robin` (default, even rotation), `least_pending` (fewest in-flight requests: best when request durations vary a lot), `weighted` (random, biased by each backend's `weight`), or `prefix_affinity` (send a chat request to the backend that already served the longest part of its conversation, so the engine's prefix cache is reused). |
 | `rate_limit.enabled` | Turn per-API-key rate limiting on or off. Off by default. |
 | `rate_limit.requests_per_second`, `.burst` | Steady-state rate and how many requests can burst above it before a caller starts getting `429`s. |
 | `rate_limit.redis_addr` | Leave empty for a per-instance limiter (fine for one gateway). Set to a `host:port` to share limit state across a fleet of inferoute instances via Redis instead. |
@@ -223,6 +224,17 @@ Every field has a sane default except `backends`, which is required.
   - `weighted`: random, biased by each backend's `weight` (default 1). Put
     a bigger `weight` on the bigger box, e.g. `weight: 4` on an 8×A100 node
     next to `weight: 1` on a single-GPU one.
+  - `prefix_affinity`: for engines with prefix caching (vLLM, SGLang,
+    llama.cpp). Every turn of a chat resends the earlier messages, and the
+    backend that served the last turn still has their KV cache. inferoute
+    hashes each prefix of the `messages` array and remembers which prefixes
+    it sent to each backend. A request goes to the backend that has seen its
+    longest prefix, as long as that backend has no more than 1.25x the
+    average in-flight requests. Past that it goes to the next best backend
+    (consistent hashing with bounded loads), so one shared system prompt
+    can't pin all traffic to one box. Ties go to the least busy backend.
+    Requests without `messages` use `least_pending`. Each gateway instance
+    learns from its own traffic; nothing is shared between instances.
 - **Streaming**: SSE responses are flushed to the client chunk-by-chunk as
   the backend produces them, not buffered.
 - **Model aliasing** (`model_aliases` in config): let callers request a
@@ -293,6 +305,36 @@ the dead backend when it dropped retry onto the survivor and still return
 go run ./cmd/loadtest -conns 64 -duration 20s   # add REDIS_ADDR for the shared-limiter row
 ```
 
+**Prefix affinity**: `go run ./cmd/loadtest -affinity -conns 32` runs 400
+six-turn conversations, 32 at a time, through each strategy against 4 mock
+engines. Each mock engine models a prefix cache: it keeps an LRU of 512
+message prefixes, charges 20 ms per request plus 25 ms per 1000 prompt
+characters it has not cached, and runs 8 requests at once (more queue).
+That is a model of vLLM-style prefix caching, not a GPU measurement; it
+shows how much of each prompt lands on a backend that already has it.
+Medians of 3 runs:
+
+| Distinct conversations | Prefix hit | Mean | p50 | p99 | Busiest backend |
+|---|---|---|---|---|---|
+| `round_robin`     | 71.1% | 52.1 ms | 43.8 ms | 115 ms | 25.0% |
+| `least_pending`   | 85.1% | 35.1 ms | 26.5 ms | 108 ms | 25.6% |
+| `prefix_affinity` | 93.5% | 28.1 ms | 26.6 ms | 58 ms  | 25.6% |
+
+| Same opening messages in every conversation | Prefix hit | Mean | p50 | p99 | Busiest backend |
+|---|---|---|---|---|---|
+| `round_robin`     | 78.8% | 44.0 ms | 42.3 ms | 99.6 ms | 25.0% |
+| `least_pending`   | 88.2% | 32.1 ms | 26.2 ms | 91.4 ms | 25.5% |
+| `prefix_affinity` | 94.9% | 26.5 ms | 26.4 ms | 46.2 ms | 25.2% |
+
+The hit rates for the other strategies are high because the ~2 KB system
+prompt is shared and quickly cached everywhere; the difference is in the
+conversation turns. `prefix_affinity` halves p99 because a turn rarely
+pays for re-reading its whole history, and the busiest backend still takes
+about a quarter of the traffic. A first version that hashed only a
+conversation's opening messages was worse than `least_pending` on the
+second workload (every conversation got the same key), which is why it now
+matches the longest prefix instead.
+
 **Semantic cache** — a backend with an artificial 700ms delay (standing in
 for real LLM inference time) behind a NuclaDB-backed cache, 20 trials each:
 
@@ -352,7 +394,8 @@ NuclaDB instance and real Redis, not fakes.
 
 Not yet built: deleting expired cache entries (they stop being served after
 `cache.ttl` but stay in NuclaDB until overwritten), true latency-aware routing
-(`least_pending` approximates it), and TLS termination (put it behind a reverse
+(`least_pending` approximates it), sharing `prefix_affinity`'s prefix memory
+across gateway instances, and TLS termination (put it behind a reverse
 proxy for that today).
 
 See tests in `internal/backend`, `internal/proxy`, `internal/cache`, and
