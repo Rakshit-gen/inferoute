@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -26,6 +27,9 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/usage"
 )
 
+// version is set at release build time.
+var version = "dev"
+
 func main() {
 	// JSON logs; the standard log package is routed through this too.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
@@ -36,7 +40,13 @@ func main() {
 
 	configPath := flag.String("config", "config.json", "path to the JSON config file listing backends")
 	check := flag.Bool("check", false, "validate the config file and exit")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("inferouted", version)
+		return
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
