@@ -12,6 +12,7 @@
 // Usage:
 //
 //	go run ./cmd/loadtest -conns 96 -duration 20s
+//	go run ./cmd/loadtest -affinity -conns 32   # load-balancing strategies on multi-turn chat
 //
 // Numbers land in README.md; re-run after any change to the request path.
 package main
@@ -50,10 +51,17 @@ func main() {
 	duration := flag.Duration("duration", 20*time.Second, "measurement window per scenario")
 	warmup := flag.Duration("warmup", 3*time.Second, "warmup window (discarded)")
 	backendDelay := flag.Duration("backend-delay", 0, "artificial per-request latency at the mock backend")
+	affinity := flag.Bool("affinity", false, "run only the prefix-affinity benchmark")
+	convs := flag.Int("convs", 400, "conversations per strategy in the affinity benchmark")
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if *affinity {
+		affinityBench(ctx, *convs, *conns)
+		return
+	}
 
 	// --- mock OpenAI-compatible backend ---
 	var beHits int64
