@@ -14,11 +14,14 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/config"
+	"github.com/Rakshit-gen/inferoute/internal/metrics"
+	"github.com/Rakshit-gen/inferoute/internal/usage"
 )
 
 func TestServeHTTPRoutesToCorrectBackend(t *testing.T) {
@@ -701,5 +704,67 @@ func TestPrefixAffinityKeepsConversationOnOneBackend(t *testing.T) {
 		if got != want {
 			t.Fatalf("conversation %d: turn 1 on %s, turn 2 on %s", c, want, got)
 		}
+	}
+}
+
+func TestMetersTokensAndEnforcesBudget(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept-Encoding") != "identity" {
+			t.Errorf("budgeted request may come back compressed: Accept-Encoding %q", r.Header.Get("Accept-Encoding"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":20}}`)
+	}))
+	defer srv.Close()
+	pool, _ := backend.NewPool([]config.Backend{{Name: "metered", URL: srv.URL, Models: []string{"budget-model"}}})
+	h := New(pool)
+	h.Budget, h.BudgetTokens = usage.NewLocal(time.Hour), 100
+	h.CallerKey = func(r *http.Request) string { return r.Header.Get("X-Caller") }
+
+	send := func(caller string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"budget-model"}`))
+		req.Header.Set("X-Caller", caller)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for i := range 2 { // 60 tokens each: the second crosses the budget but was allowed to start
+		if rec := send("alice"); rec.Code != http.StatusOK {
+			t.Fatalf("request %d: status %d", i, rec.Code)
+		}
+	}
+	rec := send("alice")
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("over-budget caller got %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	if send("bob").Code != http.StatusOK {
+		t.Fatal("one caller's spending blocked another")
+	}
+	// Three requests succeeded at 40 prompt tokens each.
+	if got := testutil.ToFloat64(metrics.Tokens.WithLabelValues("budget-model", "metered", "anonymous", "prompt")); got != 120 {
+		t.Fatalf("prompt tokens metric = %v, want 120", got)
+	}
+}
+
+func TestStreamUsageIsRequestedWithoutDroppingOptions(t *testing.T) {
+	var seen map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&seen)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	pool, _ := backend.NewPool([]config.Backend{{Name: "s", URL: srv.URL, Models: []string{"stream-model"}}})
+	h := New(pool)
+	h.StreamUsage = true
+	body := `{"model":"stream-model","stream":true,"stream_options":{"continuous_usage_stats":false}}`
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	opts, _ := seen["stream_options"].(map[string]any)
+	if opts["include_usage"] != true || opts["continuous_usage_stats"] != false {
+		t.Fatalf("backend got stream_options %v", seen["stream_options"])
+	}
+	if got := testutil.ToFloat64(metrics.Tokens.WithLabelValues("stream-model", "s", "anonymous", "completion")); got != 2 {
+		t.Fatalf("completion tokens metric = %v, want 2", got)
 	}
 }

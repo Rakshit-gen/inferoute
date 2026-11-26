@@ -27,6 +27,7 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/cache"
 	"github.com/Rakshit-gen/inferoute/internal/metrics"
+	"github.com/Rakshit-gen/inferoute/internal/usage"
 )
 
 const (
@@ -45,6 +46,15 @@ type Handler struct {
 	UpstreamTimeout time.Duration
 	// StreamIdleTimeout limits the gap between response chunks.
 	StreamIdleTimeout time.Duration
+
+	// StreamUsage asks backends to report token usage at the end of a
+	// stream (stream_options.include_usage), so streams can be metered.
+	StreamUsage bool
+	// Budget, when set, refuses callers that have spent BudgetTokens in the
+	// current window. Callers are identified by CallerKey.
+	Budget       usage.Budget
+	BudgetTokens int64
+	CallerKey    func(*http.Request) string
 
 	slots    chan struct{} // nil means no concurrency limit
 	stores   chan struct{} // limits concurrent background cache writes
@@ -124,6 +134,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var caller string
+	if h.Budget != nil {
+		if h.CallerKey != nil {
+			caller = h.CallerKey(r)
+		}
+		if h.Budget.Used(caller) >= h.BudgetTokens {
+			metrics.Rejected.WithLabelValues("token_budget").Inc()
+			secs := int(time.Until(h.Budget.Resets()).Seconds()) + 1
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			apierr.Write(w, http.StatusTooManyRequests, apierr.RateLimit, "token_budget_exceeded", "token budget for this window is used up")
+			return
+		}
+	}
 	// A deadline on the body alone: http.Server.ReadTimeout would also cancel
 	// the request while a slow generation is running.
 	rc := http.NewResponseController(w)
@@ -142,8 +165,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 
 	var parsed struct {
-		Model    string          `json:"model"`
-		Messages json.RawMessage `json:"messages"`
+		Model         string          `json:"model"`
+		Messages      json.RawMessage `json:"messages"`
+		Stream        bool            `json:"stream"`
+		StreamOptions struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil || parsed.Model == "" {
 		apierr.Write(w, http.StatusBadRequest, apierr.InvalidRequest, "invalid_body", `request body must be JSON with a "model" field`)
@@ -153,17 +180,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if alias, ok := (*h.aliases.Load())[model]; ok {
 		model = alias
 		// The backend needs to see the resolved model name, not the alias
-		// the client asked for — rewrite just that field, preserving
-		// everything else in the body byte-for-byte.
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(body, &raw); err == nil {
-			if resolved, err := json.Marshal(model); err == nil {
-				raw["model"] = resolved
-				if rewritten, err := json.Marshal(raw); err == nil {
-					body = rewritten
-				}
+		// the client asked for.
+		body = setField(body, func(f map[string]json.RawMessage) { f["model"], _ = json.Marshal(model) })
+	}
+	if (h.StreamUsage || h.Budget != nil) && parsed.Stream && !parsed.StreamOptions.IncludeUsage {
+		// A budget needs every stream metered, so it turns this on too.
+		body = setField(body, func(f map[string]json.RawMessage) {
+			var opts map[string]json.RawMessage
+			_ = json.Unmarshal(f["stream_options"], &opts)
+			if opts == nil {
+				opts = map[string]json.RawMessage{}
 			}
-		}
+			opts["include_usage"] = json.RawMessage("true")
+			f["stream_options"], _ = json.Marshal(opts)
+		})
 	}
 	pool := h.pool.Load()
 	if !pool.Serves(model) {
@@ -237,6 +267,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			pool.ReportSuccess(b)
+			h.recordUsage(r, model, b.Name, caller, res)
 			if cacheable && res.status == http.StatusOK && len(res.captured) > 0 {
 				select {
 				case h.stores <- struct{}{}:
@@ -279,6 +310,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.RequestsTotal.WithLabelValues(model, "none", "502").Inc()
 	apierr.Write(w, http.StatusBadGateway, apierr.Server, "all_backends_failed", "all backends failed: "+lastErr.Error())
+}
+
+// setField rewrites top-level fields of a JSON object body. Other fields
+// keep their bytes; the body is returned unchanged if it is not an object.
+func setField(body []byte, set func(map[string]json.RawMessage)) []byte {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(body, &fields) != nil {
+		return body
+	}
+	set(fields)
+	if out, err := json.Marshal(fields); err == nil {
+		return out
+	}
+	return body
+}
+
+// recordUsage counts the tokens a successful response reported.
+func (h *Handler) recordUsage(r *http.Request, model, backendName, caller string, res outcome) {
+	if res.status >= 300 {
+		return
+	}
+	if !res.metered {
+		metrics.Unmetered.WithLabelValues(model).Inc()
+		return
+	}
+	label := "anonymous"
+	if id := apiauth.Identity(r.Context()); id != "" {
+		label = id[:12]
+	}
+	metrics.Tokens.WithLabelValues(model, backendName, label, "prompt").Add(float64(res.tokens.Prompt))
+	metrics.Tokens.WithLabelValues(model, backendName, label, "completion").Add(float64(res.tokens.Completion))
+	if h.Budget != nil {
+		h.Budget.Add(caller, res.tokens.Prompt+res.tokens.Completion)
+	}
 }
 
 // hopHeaders apply to a single connection and are never forwarded.
@@ -385,7 +450,9 @@ type outcome struct {
 	status      int
 	captured    []byte
 	contentType string
-	broken      bool             // the backend failed after the response started
+	broken      bool         // the backend failed after the response started
+	tokens      usage.Tokens // what the response reported using, if metered
+	metered     bool
 	failure     *upstreamFailure // set when the backend answered with an error
 }
 
@@ -436,8 +503,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	if b.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+b.APIKey)
 	}
-	if tee {
-		req.Header.Set("Accept-Encoding", "identity") // cached bytes must be replayable to anyone
+	if tee || h.Budget != nil {
+		// Cached bytes must be replayable to anyone, and a compressed body
+		// can't be metered, which would let a caller dodge the budget.
+		req.Header.Set("Accept-Encoding", "identity")
 	}
 
 	resp, err := h.Client.Do(req)
@@ -452,8 +521,13 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 	}
 
 	ct := resp.Header.Get("Content-Type")
-	tee = tee && resp.Header.Get("Content-Encoding") == ""
+	plain := resp.Header.Get("Content-Encoding") == ""
+	tee = tee && plain
 	var buf bytes.Buffer
+	var meter *usage.Meter
+	if plain {
+		meter = usage.NewMeter(ct)
+	}
 
 	copyResponseHeaders(w.Header(), resp.Header)
 	// Tell the caller which backend actually served this — the playground
@@ -471,6 +545,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 			if _, err := w.Write(rbuf[:n]); err != nil {
 				return res // client disconnected; nothing more to do
 			}
+			if meter != nil {
+				meter.Write(rbuf[:n])
+			}
 			if tee {
 				if buf.Len()+n > maxCachedResponse {
 					tee = false // too big to cache; stop holding it
@@ -487,6 +564,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, b *backend.Bac
 			res.broken = readErr != io.EOF && r.Context().Err() == nil
 			if tee && readErr == io.EOF {
 				res.captured, res.contentType = buf.Bytes(), ct
+			}
+			if meter != nil && readErr == io.EOF {
+				res.tokens, res.metered = meter.Tokens()
 			}
 			return res
 		}
