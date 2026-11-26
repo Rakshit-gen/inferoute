@@ -106,7 +106,7 @@ func Middleware(l Allower, next http.Handler) http.Handler {
 // trusted, whose X-Forwarded-For entries it believes.
 func MiddlewareBehind(l Allower, trusted []netip.Prefix, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.Allow(keyFor(r, trusted)) {
+		if !l.Allow(CallerKey(r, trusted)) {
 			metrics.Rejected.WithLabelValues("rate_limited").Inc()
 			secs := int(math.Ceil(l.RetryAfter().Seconds()))
 			w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
@@ -117,7 +117,9 @@ func MiddlewareBehind(l Allower, trusted []netip.Prefix, next http.Handler) http
 	})
 }
 
-func keyFor(r *http.Request, trusted []netip.Prefix) string {
+// CallerKey identifies who a request counts against: the API key the gate
+// verified, or else the client's IP (IPv6 grouped by /64).
+func CallerKey(r *http.Request, trusted []netip.Prefix) string {
 	if id := apiauth.Identity(r.Context()); id != "" {
 		return "key:" + id
 	}
