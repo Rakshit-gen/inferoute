@@ -23,6 +23,7 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/metrics"
 	"github.com/Rakshit-gen/inferoute/internal/proxy"
 	"github.com/Rakshit-gen/inferoute/internal/ratelimit"
+	"github.com/Rakshit-gen/inferoute/internal/usage"
 )
 
 func main() {
@@ -77,6 +78,22 @@ func main() {
 		go c.EnsureTenantLoop(ctx, time.Second)
 		h.Cache = c
 		log.Printf("inferouted: semantic cache enabled against %s (max distance %.2f)", cfg.Cache.NuclaDBAddr, cfg.Cache.MaxDistance)
+	}
+
+	h.StreamUsage = cfg.Usage.StreamUsage
+	if cfg.Usage.BudgetTokens > 0 {
+		window := time.Duration(cfg.Usage.BudgetWindow)
+		if cfg.Usage.RedisAddr != "" {
+			if h.Budget, err = usage.NewRedis(cfg.Usage.RedisAddr, window); err != nil {
+				log.Fatalf("inferouted: %v", err)
+			}
+		} else {
+			h.Budget = usage.NewLocal(window)
+		}
+		h.BudgetTokens = cfg.Usage.BudgetTokens
+		trusted := cfg.TrustedProxies
+		h.CallerKey = func(r *http.Request) string { return ratelimit.CallerKey(r, trusted) }
+		log.Printf("inferouted: token budget of %d per caller every %s", cfg.Usage.BudgetTokens, window)
 	}
 
 	var handler http.Handler = h

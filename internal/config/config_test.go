@@ -139,3 +139,15 @@ func TestNoCORSOriginsByDefault(t *testing.T) {
 		t.Fatalf("origins = %v, err = %v", cfg.CORSOrigins, err)
 	}
 }
+
+func TestUsageConfig(t *testing.T) {
+	cfg, err := load(t, `{"load_balancing":"prefix_affinity","usage":{"budget_tokens":5000},`+oneBackend+`}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Usage.BudgetTokens != 5000 || time.Duration(cfg.Usage.BudgetWindow) != 24*time.Hour {
+		t.Fatalf("usage = %+v", cfg.Usage)
+	}
+	wantErr(t, `{"usage":{"budget_tokens":-1},`+oneBackend+`}`, "budget_tokens")
+	wantErr(t, `{"usage":{"budget_window":"0s"},`+oneBackend+`}`, "budget_window")
+}

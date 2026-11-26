@@ -77,6 +77,20 @@ type Cache struct {
 	TTL Duration `json:"ttl"`
 }
 
+// Usage configures token metering and per-caller token budgets.
+type Usage struct {
+	// StreamUsage adds stream_options.include_usage to streaming requests so
+	// their token use is reported. Always on while a budget is set.
+	StreamUsage bool `json:"stream_usage"`
+	// BudgetTokens is how many tokens (prompt + completion) each caller may
+	// use per BudgetWindow. 0 means no budget.
+	BudgetTokens int64    `json:"budget_tokens"`
+	BudgetWindow Duration `json:"budget_window"`
+	// RedisAddr shares budgets across gateway instances. Empty counts per
+	// instance.
+	RedisAddr string `json:"redis_addr"`
+}
+
 type Config struct {
 	ListenAddr          string    `json:"listen_addr"`
 	HealthCheckPath     string    `json:"health_check_path"`
@@ -85,6 +99,7 @@ type Config struct {
 	Backends            []Backend `json:"backends"`
 	RateLimit           RateLimit `json:"rate_limit"`
 	Cache               Cache     `json:"cache"`
+	Usage               Usage     `json:"usage"`
 	// LoadBalancing picks which backend serves each request among the
 	// healthy ones for a model: "round_robin" (default, even rotation),
 	// "least_pending" (fewest in-flight requests), "weighted" (random,
@@ -168,6 +183,9 @@ func (c *Config) expandSecrets() (err error) {
 	if c.RateLimit.RedisAddr, err = expandSecret(c.RateLimit.RedisAddr); err != nil {
 		return fmt.Errorf("rate_limit.redis_addr: %w", err)
 	}
+	if c.Usage.RedisAddr, err = expandSecret(c.Usage.RedisAddr); err != nil {
+		return fmt.Errorf("usage.redis_addr: %w", err)
+	}
 	return nil
 }
 
@@ -181,6 +199,7 @@ func Load(path string) (*Config, error) {
 		HealthCheckInterval:   Duration(10 * time.Second),
 		HealthCheckTimeout:    Duration(2 * time.Second),
 		Cache:                 Cache{TTL: Duration(24 * time.Hour)},
+		Usage:                 Usage{BudgetWindow: Duration(24 * time.Hour)},
 		MaxRequestBodyBytes:   16 << 20,
 		MaxConcurrentRequests: 1024,
 		ShutdownTimeout:       Duration(30 * time.Second),
@@ -290,6 +309,12 @@ func Load(path string) (*Config, error) {
 		if cfg.RateLimit.Burst == 0 {
 			cfg.RateLimit.Burst = 1
 		}
+	}
+	if cfg.Usage.BudgetTokens < 0 {
+		return nil, fmt.Errorf("config %s: usage.budget_tokens must not be negative", path)
+	}
+	if cfg.Usage.BudgetWindow <= 0 {
+		return nil, fmt.Errorf("config %s: usage.budget_window must be positive", path)
 	}
 	if cfg.Cache.Enabled {
 		if cfg.Cache.NuclaDBAddr == "" || cfg.Cache.EmbeddingBackendAddr == "" || cfg.Cache.EmbeddingModel == "" {

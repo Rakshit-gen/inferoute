@@ -19,6 +19,7 @@ import (
 
 	site "github.com/Rakshit-gen/inferoute/docs/site"
 	"github.com/Rakshit-gen/inferoute/internal/apiauth"
+	"github.com/Rakshit-gen/inferoute/internal/apierr"
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/config"
 	"github.com/Rakshit-gen/inferoute/internal/proxy"
@@ -43,6 +44,7 @@ func (a *app) routes() http.Handler {
 	v1.HandleFunc("GET /v1/backends", a.backends)
 	v1.HandleFunc("GET /v1/config", a.config)
 	v1.HandleFunc("GET /v1/models", a.models)
+	v1.HandleFunc("GET /v1/usage", a.usage)
 	v1.Handle("/metrics", promhttp.Handler())
 	gated := a.gate.Middleware(v1)
 
@@ -87,6 +89,26 @@ func (a *app) config(w http.ResponseWriter, r *http.Request) {
 			"max_distance": cfg.Cache.MaxDistance,
 		},
 		"api_keys_required": a.gate.Required(),
+		"usage": map[string]any{
+			"stream_usage":  cfg.Usage.StreamUsage || cfg.Usage.BudgetTokens > 0,
+			"budget_tokens": cfg.Usage.BudgetTokens,
+			"budget_window": cfg.Usage.BudgetWindow.String(),
+		},
+	})
+}
+
+// usage reports the caller's own token budget for the current window.
+func (a *app) usage(w http.ResponseWriter, r *http.Request) {
+	if a.h.Budget == nil {
+		apierr.Write(w, http.StatusNotFound, apierr.InvalidRequest, "no_token_budget", "no token budget is configured")
+		return
+	}
+	used := a.h.Budget.Used(a.h.CallerKey(r))
+	writeJSON(w, map[string]any{
+		"budget_tokens": a.h.BudgetTokens,
+		"used_tokens":   used,
+		"remaining":     max(a.h.BudgetTokens-used, 0),
+		"resets_at":     a.h.Budget.Resets().UTC().Format(time.RFC3339),
 	})
 }
 

@@ -17,6 +17,8 @@ import (
 	"github.com/Rakshit-gen/inferoute/internal/backend"
 	"github.com/Rakshit-gen/inferoute/internal/config"
 	"github.com/Rakshit-gen/inferoute/internal/proxy"
+	"github.com/Rakshit-gen/inferoute/internal/ratelimit"
+	"github.com/Rakshit-gen/inferoute/internal/usage"
 )
 
 func testApp(t *testing.T, keys ...string) *app {
@@ -210,5 +212,29 @@ func TestRequestIDs(t *testing.T) {
 	rec := get(h, "/docs", "X-Request-Id", "bad id\twith junk")
 	if got := rec.Header().Get("X-Request-Id"); got == "" || strings.Contains(got, " ") || got != seen {
 		t.Fatalf("id = %q, seen %q", got, seen)
+	}
+}
+
+func TestUsageReportsCallersBudget(t *testing.T) {
+	a := testApp(t, "secret")
+	if rec := get(a.routes(), "/v1/usage", "Authorization", "Bearer secret"); rec.Code != http.StatusNotFound {
+		t.Fatalf("without a budget: status %d", rec.Code)
+	}
+	a.h.Budget, a.h.BudgetTokens = usage.NewLocal(time.Hour), 1000
+	a.h.CallerKey = func(r *http.Request) string { return ratelimit.CallerKey(r, nil) }
+	a.h.Budget.Add("key:"+apiauth.Fingerprint("secret"), 250)
+
+	rec := get(a.routes(), "/v1/usage", "Authorization", "Bearer secret")
+	var got struct {
+		Budget    int64  `json:"budget_tokens"`
+		Used      int64  `json:"used_tokens"`
+		Remaining int64  `json:"remaining"`
+		ResetsAt  string `json:"resets_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.Used != 250 || got.Remaining != 750 || got.Budget != 1000 {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if _, err := time.Parse(time.RFC3339, got.ResetsAt); err != nil {
+		t.Fatalf("resets_at %q: %v", got.ResetsAt, err)
 	}
 }
