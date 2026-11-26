@@ -347,7 +347,7 @@ OLLAMA_HOST=127.0.0.1:11435 ollama serve &
 ollama pull llama3`}</Pre>
 
       <H3>2. Install and run inferoute</H3>
-      <P>One command if you have Go, plus the sample config, which already points at those two ports:</P>
+      <P>One command (it downloads a checksummed release binary, or builds with Go if none is published), plus the sample config, which already points at those two ports:</P>
       <Pre>{`curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh
 curl -O https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/config.example.json
 inferouted -config config.example.json`}</Pre>

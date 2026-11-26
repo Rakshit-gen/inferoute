@@ -1,5 +1,6 @@
 # inferoute
 
+[![ci](https://github.com/Rakshit-gen/inferoute/actions/workflows/ci.yml/badge.svg)](https://github.com/Rakshit-gen/inferoute/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An OpenAI-compatible inference gateway written in Go: it load-balances
@@ -59,7 +60,10 @@ OLLAMA_HOST=127.0.0.1:11435 ollama serve &
 ollama pull llama3
 ```
 
-Install and run inferoute against them — one command if you have Go:
+Install and run inferoute against them. The script downloads the latest
+release binary for macOS or Linux into `~/.local/bin` and checks it against
+the release's `checksums.txt` (with no release published it builds with
+`go install` instead):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh
@@ -157,6 +161,7 @@ The binary is `inferouted`:
 ```sh
 ./bin/inferouted -config path/to/config.json   # defaults to ./config.json
 ./bin/inferouted -config path/to/config.json -check   # validates and exits
+./bin/inferouted -version                      # prints the version and exits
 ./bin/inferouted -h                            # prints usage and exits
 ```
 

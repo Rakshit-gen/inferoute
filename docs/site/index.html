@@ -189,14 +189,14 @@
 
     <section id="install">
       <h2>Install</h2>
-      <p>One command (needs the Go toolchain, nothing else):</p>
+      <p>One command:</p>
       <pre><code>$ curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh</code></pre>
       <p style="font-size:14px;color:var(--text-dim); max-width:720px">
-        That resolves straight to the latest commit on <code>main</code> via
-        <code>go install .../cmd/inferouted@latest</code>, so there are no
-        stale prebuilt-binary releases to maintain. Don't have Go? The script says
-        so and points at <a href="https://go.dev/dl/">go.dev/dl</a> instead
-        of failing silently. Prefer building from source instead:
+        It downloads the latest release binary for macOS or Linux (amd64 or
+        arm64) into <code>~/.local/bin</code> and checks it against the
+        release's <code>checksums.txt</code>. Set <code>INFEROUTE_VERSION</code>
+        to pin a version. With no release published it builds with
+        <code>go install</code> instead. Or build from source:
       </p>
       <pre><code><span class="kw">git clone</span> https://github.com/Rakshit-gen/inferoute && <span class="kw">cd</span> inferoute
 <span class="kw">go build</span> -o bin/inferouted ./cmd/inferouted</code></pre>

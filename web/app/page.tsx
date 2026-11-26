@@ -243,7 +243,7 @@ export default function Landing() {
         <div>
           <h2 className="eyebrow mb-4">quickstart</h2>
           <pre className="panel overflow-x-auto p-4 font-mono text-xs leading-relaxed text-ink-dim">
-{`# install (needs Go), grab the sample config, run
+{`# install, grab the sample config, run
 curl -fsSL https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/install.sh | sh
 curl -O https://raw.githubusercontent.com/Rakshit-gen/inferoute/main/config.example.json
 inferouted -config config.example.json
