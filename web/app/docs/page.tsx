@@ -133,6 +133,18 @@ const configFields: [string, React.ReactNode][] = [
     'cache.enabled',
     'Turn semantic response caching on or off. Off by default. Requires a running NuclaDB instance.',
   ],
+  [
+    'usage.budget_tokens, .budget_window',
+    'How many tokens (prompt + completion, as the backend reports them) each caller may use per window. Default window "24h"; 0 tokens, the default, means no budget. Over it, requests get 429 until the window resets.',
+  ],
+  [
+    'usage.redis_addr',
+    'Leave empty and each inferoute process keeps its own budget counts. Set it to a Redis address and several instances share them.',
+  ],
+  [
+    'usage.stream_usage',
+    'Ask streaming backends to report token usage so streams are counted. Always on while a budget is set. Clients then get one extra final chunk with an empty choices list.',
+  ],
   ['cache.nucladb_addr', 'Where that NuclaDB instance is reachable.'],
   [
     'cache.embedding_backend_addr, .embedding_model',
@@ -160,7 +172,7 @@ const configFields: [string, React.ReactNode][] = [
 const endpoints: [string, React.ReactNode][] = [
   [
     'POST /v1/chat/completions',
-    'The proxy itself. Reads "model" from the JSON body, resolves aliases, checks the cache when enabled, picks a healthy backend, and streams the response straight back. Returns 400 if the body is not JSON with a "model" field, 401 if an API key is required and missing, 404 if no backend serves that model, 429 if rate limited, 503 if no backend is available or the gateway is at capacity. If every attempt fails, the last backend\'s status and body are returned, or 502 if none answered.',
+    'The proxy itself. Reads "model" from the JSON body, resolves aliases, checks the cache when enabled, picks a healthy backend, and streams the response straight back. Returns 400 if the body is not JSON with a "model" field, 401 if an API key is required and missing, 404 if no backend serves that model, 429 if rate limited or over its token budget, 503 if no backend is available or the gateway is at capacity. If every attempt fails, the last backend\'s status and body are returned, or 502 if none answered.',
   ],
   [
     'GET /v1/models',
@@ -172,8 +184,12 @@ const endpoints: [string, React.ReactNode][] = [
     'The active model aliases, the health-check interval, and whether rate limiting, caching, and API-key auth are on. This is what the dashboard reads to describe your gateway.',
   ],
   [
+    'GET /v1/usage',
+    'The calling key\'s token budget: budget_tokens, used_tokens, remaining, and resets_at. 404 when no budget is configured.',
+  ],
+  [
     'GET /metrics',
-    'Prometheus text format: request counts and latency by model and backend, and cache hit / miss / error counts.',
+    'Prometheus text format: request counts and latency by model and backend, tokens used by model, backend and caller, and cache hit / miss / error counts.',
   ],
   ['GET /healthz', 'A liveness probe for load balancers and orchestrators. Always 200 while the process is running.'],
   ['GET /readyz', 'A readiness probe. Returns 503 while no backend can take traffic.'],

@@ -285,6 +285,9 @@ $ inferouted -h                            <span class="dim"># prints usage and 
         <tr><td><code>cache.max_distance</code></td><td>How close a cached prompt has to be to count as a hit: see <a href="#cache-notes">Semantic cache notes</a>, the naming is easy to get backwards.</td></tr>
         <tr><td><code>cache.tenant_id</code></td><td>NuclaDB tenant inferoute's cache vectors are stored under.</td></tr>
         <tr><td><code>model_aliases</code></td><td>Maps a requested model name to one your backends actually serve, e.g. <code>{"gpt-4": "llama3"}</code>.</td></tr>
+        <tr><td><code>usage.budget_tokens</code>, <code>.budget_window</code></td><td>Tokens (prompt + completion, as reported by the backend) each caller may use per window (default <code>24h</code>). <code>0</code>, the default, means no budget. Over it, requests get <code>429 token_budget_exceeded</code> until the window resets.</td></tr>
+        <tr><td><code>usage.redis_addr</code></td><td>Share budgets across instances through Redis. Empty counts per instance.</td></tr>
+        <tr><td><code>usage.stream_usage</code></td><td>Ask streaming backends to report usage (<code>stream_options.include_usage</code>) so streams are metered. Always on while a budget is set; clients then receive one final chunk with empty <code>choices</code>.</td></tr>
       </table>
     </section>
 
@@ -296,10 +299,11 @@ $ inferouted -h                            <span class="dim"># prints usage and 
         <tr><td><code>POST /v1/*</code></td><td>Proxied to a backend: same path the client used, plus <code>path_prefix</code> if set. This is the actual gateway traffic.</td></tr>
         <tr><td><code>GET /v1/models</code></td><td>OpenAI-compatible model list: every model a backend serves plus every alias. SDKs call this to populate model pickers.</td></tr>
         <tr><td><code>GET /v1/backends</code></td><td>JSON snapshot of every backend's name, URL, models, and current health.</td></tr>
-        <tr><td><code>GET /v1/config</code></td><td>Active model aliases, health-check interval, and whether rate limiting, caching, and API-key auth are on.</td></tr>
+        <tr><td><code>GET /v1/config</code></td><td>Active model aliases, health-check interval, and whether rate limiting, caching, token budgets, and API-key auth are on.</td></tr>
+        <tr><td><code>GET /v1/usage</code></td><td>The caller's token budget: <code>budget_tokens</code>, <code>used_tokens</code>, <code>remaining</code>, <code>resets_at</code>. 404 when no budget is configured.</td></tr>
         <tr><td><code>GET /healthz</code></td><td>Liveness probe: always 200 once the process is up.</td></tr>
         <tr><td><code>GET /readyz</code></td><td>Readiness probe: 503 while no backend can take traffic.</td></tr>
-        <tr><td><code>GET /metrics</code></td><td>Prometheus: request counts, latency, backend health and in-flight requests, failovers, rejections, cache lookups and writes.</td></tr>
+        <tr><td><code>GET /metrics</code></td><td>Prometheus: request counts, latency, backend health and in-flight requests, failovers, rejections, tokens used per model, backend and caller, cache lookups and writes.</td></tr>
         <tr><td><code>GET /docs</code></td><td>This page, served straight from the running binary.</td></tr>
       </table>
     </section>

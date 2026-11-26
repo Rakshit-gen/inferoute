@@ -95,7 +95,8 @@ Prometheus metrics, `/healthz` is a liveness probe, `/readyz` answers 503
 while no backend can take traffic, `/v1/models` lists the
 served models (OpenAI shape, for SDKs), `/v1/backends` reports each
 backend's name, models, and current health, `/v1/config` reports the model
-aliases and which features are enabled, and `/docs` serves a full
+aliases and which features are enabled, `/v1/usage` reports the caller's
+token budget when one is set, and `/docs` serves a full
 documentation page straight from the running binary:
 
 ```sh
@@ -201,6 +202,9 @@ one). Plain-English rundown of each section:
 | `stream_idle_timeout` | Longest allowed gap between response chunks. Defaults to `2m`. |
 | `shutdown_timeout` | How long running requests get to finish after `SIGTERM`. Defaults to `30s`. |
 | `cache.ttl`, `cache.lookup_timeout` | How long an entry may be served (default `24h`, `0s` keeps it indefinitely) and the limit on the lookup made before each request (default `2s`). |
+| `usage.budget_tokens`, `.budget_window` | Tokens (prompt + completion, as the backend reports them) each caller may use per window, e.g. `1000000` per `24h` (the default window). `0`, the default, means no budget. A caller is an API key, or a client IP when `api_keys` is empty. Windows line up with the Unix epoch, so every instance agrees on when they reset. |
+| `usage.redis_addr` | Leave empty to count budgets per instance. Set to a Redis `host:port` or `redis://` URL to share them across instances. If Redis goes down, each instance counts on its own until it is back. |
+| `usage.stream_usage` | Add `stream_options.include_usage` to streaming requests so they report usage and get metered. Always on while a budget is set. Off by default, because the client then gets one extra final chunk with an empty `choices` list (what OpenAI sends when you ask for usage). |
 
 Every field has a sane default except `backends`, which is required.
 
@@ -257,12 +261,26 @@ Every field has a sane default except `backends`, which is required.
 - **Config hot-reload**: `SIGHUP` reloads `backends`, `load_balancing`,
   `model_aliases`, `api_keys` and the health-check settings from the config file without dropping in-flight requests or restarting
   the process.
+- **Token accounting** (`usage` in config): inferoute reads the `usage`
+  object backends return, from the JSON body or the final SSE chunk, without
+  buffering the stream. `/metrics` counts prompt and completion tokens per
+  model, backend and caller, and counts successful responses that reported no
+  usage. With `usage.budget_tokens` set, a caller who has used their budget
+  for the window gets `429 token_budget_exceeded` with `Retry-After` set to
+  the reset, and `GET /v1/usage` tells a caller where they stand. The check
+  runs before a request starts, so requests already in flight can take a
+  caller past the budget. Backends that report no usage, or compress their
+  responses (budgets ask for uncompressed ones), go uncounted.
 - **Introspection**: `/v1/models` (OpenAI-compatible model list),
-  `/v1/backends` (every backend's name, URL, models, health), and
-  `/v1/config` (aliases and which features are on).
+  `/v1/backends` (every backend's name, URL, models, health),
+  `/v1/config` (aliases and which features are on), and `/v1/usage` (the
+  caller's token budget, used, remaining, and reset time).
 - **Metrics** (`/metrics`): request count by model/backend/status, request
   latency histogram by model, backend health and in-flight requests, failovers,
-  rejected requests, and cache lookups and writes. Point Prometheus or Grafana
+  rejected requests, tokens used, and cache lookups and writes. The `caller`
+  label on `inferoute_tokens_total` is the first 12 hex characters of the
+  key's SHA-256 (`printf %s "$KEY" | sha256sum | cut -c1-12`), or
+  `anonymous`. Point Prometheus or Grafana
   at it.
 - **Operations**: JSON logs with one access-log line per request, an
   `X-Request-Id` on every response that is also sent to the backend, graceful
@@ -387,7 +405,9 @@ These defaults changed and can affect an existing deployment:
 Working end-to-end, verified against real binaries (not just unit tests):
 routing, round-robin, health-checked failover, streaming passthrough,
 model aliasing, `SIGHUP` config reload, `/v1/backends` introspection,
-per-key rate limiting (both in-process and Redis-backed), and NuclaDB-backed
+per-key rate limiting (both in-process and Redis-backed), prefix-affinity
+routing, token metering and per-key budgets (including a stream that never
+asked for usage), and NuclaDB-backed
 semantic caching — including caching a streaming response and replaying it
 on a hit — with real cache-hit/cache-miss behavior confirmed against a live
 NuclaDB instance and real Redis, not fakes.
