@@ -46,8 +46,11 @@ func main() {
 
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Model    string `json:"model"`
-			Stream   bool   `json:"stream"`
+			Model         string `json:"model"`
+			Stream        bool   `json:"stream"`
+			StreamOptions struct {
+				IncludeUsage bool `json:"include_usage"`
+			} `json:"stream_options"`
 			Messages []struct {
 				Role    string `json:"role"`
 				Content string `json:"content"`
@@ -100,6 +103,14 @@ func main() {
 			fmt.Fprintf(w, "data: %s\n\n", b)
 			fl.Flush()
 			time.Sleep(40 * time.Millisecond)
+		}
+		if req.StreamOptions.IncludeUsage {
+			b, _ := json.Marshal(map[string]any{
+				"id": id, "object": "chat.completion.chunk", "created": created, "model": req.Model,
+				"choices": []any{},
+				"usage":   map[string]int{"prompt_tokens": len(prompt), "completion_tokens": len(reply), "total_tokens": len(prompt) + len(reply)},
+			})
+			fmt.Fprintf(w, "data: %s\n\n", b)
 		}
 		fmt.Fprint(w, "data: [DONE]\n\n")
 		fl.Flush()
